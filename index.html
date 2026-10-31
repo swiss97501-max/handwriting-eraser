@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<title>Handwriting Eraser — ลบลายมือจากข้อสอบ</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #000000;
+    --muted: #6b7280;
+    --border: #000000;
+    --radius: 0px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    -webkit-text-size-adjust: 100%;
+  }
+  button { cursor: pointer; font-family: inherit; border-radius: 0 !important; }
+  input { font-family: inherit; }
+
+  /* Header */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex; align-items: center; gap: 12px;
+    position: sticky; top: 0; background: var(--bg); z-index: 30;
+  }
+  .logo {
+    width: 32px; height: 32px; flex-shrink: 0;
+    background: #000; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+  }
+  header h1 { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+  header .sub { font-size: 11px; color: var(--muted); display: block; }
+  header .spacer { flex: 1; }
+
+  /* Layout */
+  main { flex: 1; max-width: 680px; width: 100%; margin: 0 auto; padding: 16px; }
+
+  /* Landing */
+  .hero { text-align: center; padding: 16px 0 24px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--border); padding: 4px 10px; font-size: 11px; margin-bottom: 12px;
+  }
+  .hero h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.25; max-width: 420px; margin: 0 auto; }
+  .hero p { font-size: 13px; color: var(--muted); margin-top: 10px; max-width: 420px; margin-left: auto; margin-right: auto; line-height: 1.5; }
+
+  .dropzone {
+    border: 2px dashed var(--border); padding: 28px 16px; text-align: center;
+    transition: background 0.15s; cursor: pointer; max-width: 420px; margin: 20px auto 0;
+  }
+  .dropzone.over { background: #f3f4f6; }
+  .dropzone .icon { width: 48px; height: 48px; margin: 0 auto 12px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; background: #f3f4f6; }
+  .dropzone p { font-size: 14px; font-weight: 500; }
+  .dropzone .hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    background: #000; color: #fff; border: 1px solid #000;
+    padding: 9px 16px; font-size: 13px; font-weight: 500;
+    margin-top: 14px; min-height: 40px;
+  }
+  .btn:hover { background: #222; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn.outline { background: #fff; color: #000; }
+  .btn.outline:hover { background: #f3f4f6; }
+  .btn.block { display: flex; width: 100%; }
+  .btn.sm { padding: 6px 10px; font-size: 12px; min-height: 32px; }
+
+  .features { display: grid; grid-template-columns: 1fr; gap: 10px; max-width: 420px; margin: 24px auto 0; }
+  .feat { border: 1px solid var(--border); padding: 12px; }
+  .feat .ico { width: 28px; height: 28px; border: 1px solid var(--border); background: #f3f4f6; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; }
+  .feat h3 { font-size: 13px; font-weight: 600; }
+  .feat p { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+
+  /* Workspace */
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .tabs { display: flex; border: 1px solid var(--border); }
+  .tab { background: #fff; color: #000; border: none; padding: 6px 12px; font-size: 12px; font-weight: 500; border-right: 1px solid var(--border); }
+  .tab:last-child { border-right: none; }
+  .tab.active { background: #000; color: #fff; }
+  .pager { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+  .pager .info { font-size: 12px; color: var(--muted); min-width: 80px; text-align: center; font-variant-numeric: tabular-nums; }
+  .iconbtn { width: 32px; height: 32px; border: 1px solid var(--border); background: #fff; display: flex; align-items: center; justify-content: center; }
+  .iconbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .viewer-wrap { max-width: 480px; margin: 0 auto; }
+  .slider-box {
+    position: relative; width: 100%; overflow: hidden; border: 1px solid var(--border); background: #fff;
+    aspect-ratio: 595 / 842; touch-action: none;
+  }
+  .slider-box img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #fff; }
+  .label { position: absolute; top: 8px; padding: 3px 8px; font-size: 11px; font-weight: 500; pointer-events: none; }
+  .label.orig { left: 8px; background: #000; color: #fff; }
+  .label.clean { right: 8px; background: #fff; color: #000; border: 1px solid #000; }
+  .divider { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px solid #000; transform: translateX(-0.5px); z-index: 10; }
+  .handle {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 36px; height: 36px; background: #fff; border: 2px solid #000;
+    display: flex; align-items: center; justify-content: center; cursor: ew-resize;
+  }
+  .single-view { position: relative; width: 100%; overflow: hidden; border: 1px solid var(--border); background: #fff; aspect-ratio: 595 / 842; }
+  .single-view img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .viewer-hint { text-align: center; font-size: 11px; color: var(--muted); margin-top: 8px; }
+
+  /* Side panel */
+  .panel { margin-top: 16px; display: grid; gap: 12px; }
+  .card { border: 1px solid var(--border); padding: 12px; }
+  .card .row1 { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+  .card .row1 .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .card .meta { font-size: 11px; color: var(--muted); margin: 4px 0 10px; }
+  .progress { height: 6px; border: 1px solid var(--border); background: #fff; overflow: hidden; margin: 8px 0; }
+  .progress > div { height: 100%; background: #000; width: 0%; transition: width 0.2s; }
+  .thumb-list { max-height: 50vh; overflow-y: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .thumb-list::-webkit-scrollbar { width: 6px; }
+  .thumb-list::-webkit-scrollbar-thumb { background: #000; }
+  .thumb {
+    position: relative; border: 1px solid #d1d5db; background: #fff; cursor: pointer; overflow: hidden;
+    aspect-ratio: 595 / 842;
+  }
+  .thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .thumb .num { position: absolute; bottom: 2px; left: 2px; background: #000; color: #fff; font-size: 9px; padding: 1px 4px; }
+  .thumb.active { border: 2px solid #000; box-shadow: 0 0 0 2px #000; }
+
+  /* Footer */
+  footer { border-top: 1px solid var(--border); padding: 12px 16px; margin-top: auto; }
+  footer .ft { max-width: 680px; margin: 0 auto; font-size: 11px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: space-between; align-items: center; }
+
+  /* Spinner */
+  .spin { width: 16px; height: 16px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: sp 0.7s linear infinite; }
+  .spin.dark { border-color: #000; border-top-color: transparent; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+
+  .hidden { display: none !important; }
+  .center { text-align: center; }
+  .err { color: #b00020; font-size: 12px; margin-top: 8px; }
+
+  /* loading overlay */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(255,255,255,0.85); z-index: 100;
+    display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px;
+  }
+  .overlay .msg { font-size: 13px; color: #000; }
+
+  @media (min-width: 640px) {
+    .features { grid-template-columns: repeat(3, 1fr); }
+    .panel { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- OpenCV.js, pdf.js, jsPDF loaded from CDN -->
+<script async src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js" onload="onCvReady()"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<header>
+  <div class="logo">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/>
+      <path d="M22 21H7"/>
+      <path d="m5 11 9 9"/>
+    </svg>
+  </div>
+  <div>
+    <h1>Handwriting Eraser</h1>
+    <span class="sub">ลบลายมือจากข้อสอบ — ทำงานในเบราว์เซอร์</span>
+  </div>
+  <div class="spacer"></div>
+  <button id="newBtn" class="btn outline sm hidden" onclick="resetAll()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+    ใหม่
+  </button>
+</header>
+
+<main>
+  <!-- Landing -->
+  <section id="landing">
+    <div class="hero">
+      <span class="badge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg>
+        ทำงานในเบราว์เซอร์ 100% · ไม่ส่งไฟล์ไป server
+      </span>
+      <h2>ลบลายมือจากข้อสอบ PDF อัตโนมัติ</h2>
+      <p>อัปโหลดข้อสอบ PDF — ปากกาสีน้ำเงิน/แดง (คำนวณ, วงกลมคำตอบ) จะถูกลบออก ส่วนตัวพิมพ์และไดอะแกรมยังอยู่ครบ</p>
+    </div>
+
+    <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+      <div class="icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </div>
+      <p>ลากไฟล์ PDF มาวางที่นี่</p>
+      <p class="hint">หรือกดเพื่อเลือกไฟล์</p>
+      <button class="btn" onclick="event.stopPropagation(); document.getElementById('fileInput').click()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        เลือกไฟล์ PDF
+      </button>
+      <input type="file" id="fileInput" accept="application/pdf,.pdf" class="hidden" onchange="onFileSelected(this.files[0])">
+    </div>
+
+    <div class="features">
+      <div class="feat">
+        <div class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="0"/><path d="M3 12h18M12 3v18"/></svg></div>
+        <h3>เปรียบเทียบก่อน/หลัง</h3>
+        <p>ลาก slider ดูหน้าข้อสอบต้นฉบับ vs หน้าที่ลบแล้ว</p>
+      </div>
+      <div class="feat">
+        <div class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+        <h3>รักษาไดอะแกรม</h3>
+        <p>พื้นที่สีทึบ ตัวพิมพ์ กราฟ ยังอยู่ครบ</p>
+      </div>
+      <div class="feat">
+        <div class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
+        <h3>ดาวน์โหลด PDF</h3>
+        <p>ประกอบกลับเป็น PDF ใหม่ให้ดาวน์โหลด</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Workspace -->
+  <section id="workspace" class="hidden">
+    <div class="toolbar">
+      <div class="tabs">
+        <button class="tab active" data-mode="compare" onclick="setMode('compare')">เปรียบเทียบ</button>
+        <button class="tab" data-mode="cleaned" onclick="setMode('cleaned')">ลบแล้ว</button>
+        <button class="tab" data-mode="original" onclick="setMode('original')">ต้นฉบับ</button>
+      </div>
+      <div class="pager">
+        <button class="iconbtn" id="prevBtn" onclick="prevPage()" aria-label="หน้าก่อนหน้า">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <span class="info" id="pageInfo">หน้า 1 / 1</span>
+        <button class="iconbtn" id="nextBtn" onclick="nextPage()" aria-label="หน้าถัดไป">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="viewer-wrap">
+      <!-- Compare slider -->
+      <div class="slider-box" id="sliderBox">
+        <img id="afterImg" alt="ลบแล้ว">
+        <img id="beforeImg" alt="ต้นฉบับ" style="clip-path: inset(0 50% 0 0);">
+        <span class="label orig">ต้นฉบับ</span>
+        <span class="label clean">ลบแล้ว</span>
+        <div class="divider" id="divider" style="left: 50%;"></div>
+        <div class="handle" id="handle" style="left: 50%;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 7-5 5 5 5"/><path d="m15 7 5 5-5 5"/></svg>
+        </div>
+      </div>
+      <!-- Single view -->
+      <div class="single-view hidden" id="singleView">
+        <img id="singleImg" alt="หน้าข้อสอบ">
+        <span class="label clean" id="singleLabel">ลบแล้ว</span>
+      </div>
+      <p class="viewer-hint">ลาก handle เพื่อเปรียบเทียบ · ใช้ปุ่ม ← → เปลี่ยนหน้า</p>
+    </div>
+
+    <div class="panel">
+      <div class="card">
+        <div class="row1">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <span class="nm" id="fileName">document.pdf</span>
+        </div>
+        <div class="meta" id="fileMeta">0 หน้า</div>
+        <div class="progress hidden" id="buildProgress"><div id="buildBar"></div></div>
+        <p class="hidden" id="buildText" style="font-size:11px;color:var(--muted);"></p>
+        <p class="err hidden" id="buildErr"></p>
+        <button class="btn block" id="downloadBtn" onclick="downloadCleanedPdf()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span id="downloadLabel">ดาวน์โหลด PDF ที่ลบลายมือแล้ว</span>
+        </button>
+      </div>
+      <div class="card">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">หน้าทั้งหมด</div>
+        <div class="thumb-list" id="thumbList"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="ft">
+    <span>ทำงานในเบราว์เซอร์ · OpenCV.js + pdf.js + jsPDF</span>
+    <span>ไฟล์ไม่ออกจากเครื่องคุณ</span>
+  </div>
+</footer>
+
+<!-- Loading overlay -->
+<div class="overlay hidden" id="overlay">
+  <div class="spin dark" style="width:28px;height:28px;"></div>
+  <div class="msg" id="overlayMsg">กำลังโหลด...</div>
+</div>
+
+<script>
+"use strict";
+
+// ============ State ============
+let cvReady = false;
+let pdfDoc = null;          // pdf.js doc
+let pages = [];             // [{canvas: HTMLCanvasElement (original), w, h}]
+let currentPage = 0;
+let mode = "compare";       // compare | cleaned | original
+let cleanedCache = {};     // index -> dataURL
+let originalCache = {};    // index -> dataURL (full)
+let fileName = "document.pdf";
+let building = false;
+
+// ============ pdf.js setup ============
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+}
+
+// ============ OpenCV readiness ============
+function onCvReady() {
+  // OpenCV.js may need runtime init
+  if (typeof cv !== "undefined" && cv.Mat) {
+    cvReady = true;
+  } else {
+    // wait for runtime
+    cv["onRuntimeInitialized"] = () => { cvReady = true; };
+  }
+}
+function waitCv() {
+  return new Promise((resolve) => {
+    if (cvReady) return resolve();
+    const t = setInterval(() => {
+      if (cvReady) { clearInterval(t); resolve(); }
+    }, 100);
+  });
+}
+
+function showOverlay(msg) {
+  document.getElementById("overlayMsg").textContent = msg;
+  document.getElementById("overlay").classList.remove("hidden");
+}
+function hideOverlay() { document.getElementById("overlay").classList.add("hidden"); }
+
+// ============ File handling ============
+const dropzone = document.getElementById("dropzone");
+["dragover", "dragenter"].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove("over"); }));
+dropzone.addEventListener("drop", e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f) onFileSelected(f);
+});
+
+async function onFileSelected(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith(".pdf")) {
+    alert("กรุณาเลือกไฟล์ PDF");
+    return;
+  }
+  fileName = file.name;
+  showOverlay("กำลังโหลด OpenCV.js...");
+  await waitCv();
+  showOverlay("กำลังอ่าน PDF...");
+  try {
+    const buf = await file.arrayBuffer();
+    pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+    pages = [];
+    cleanedCache = {};
+    originalCache = {};
+    currentPage = 0;
+    // render all pages to canvases at ~100 DPI (kept moderate for browser memory
+    // and cv.inpaint stability in WASM)
+    const scale = 1.0;
+    for (let i = 1; i <= pdfDoc.numPages; i++) {
+      showOverlay(`กำลังเรนเดอร์หน้า ${i}/${pdfDoc.numPages}...`);
+      const page = await pdfDoc.getPage(i);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      pages.push({ canvas, w: viewport.width, h: viewport.height });
+    }
+    hideOverlay();
+    enterWorkspace();
+  } catch (e) {
+    hideOverlay();
+    alert("เกิดข้อผิดพลาดในการอ่าน PDF: " + e.message);
+  }
+}
+
+function enterWorkspace() {
+  document.getElementById("landing").classList.add("hidden");
+  document.getElementById("workspace").classList.remove("hidden");
+  document.getElementById("newBtn").classList.remove("hidden");
+  document.getElementById("fileName").textContent = fileName;
+  document.getElementById("fileMeta").textContent = `${pages.length} หน้า`;
+  buildThumbnails();
+  goPage(0);
+}
+
+function resetAll() {
+  pages = [];
+  cleanedCache = {};
+  originalCache = {};
+  pdfDoc = null;
+  currentPage = 0;
+  building = false;
+  document.getElementById("landing").classList.remove("hidden");
+  document.getElementById("workspace").classList.add("hidden");
+  document.getElementById("newBtn").classList.add("hidden");
+  document.getElementById("buildProgress").classList.add("hidden");
+  document.getElementById("buildText").classList.add("hidden");
+  document.getElementById("buildErr").classList.add("hidden");
+  document.getElementById("downloadLabel").textContent = "ดาวน์โหลด PDF ที่ลบลายมือแล้ว";
+  document.getElementById("downloadBtn").disabled = false;
+  document.getElementById("fileInput").value = "";
+}
+
+// ============ Thumbnails ============
+function buildThumbnails() {
+  const list = document.getElementById("thumbList");
+  list.innerHTML = "";
+  const TH = 120;
+  pages.forEach((pg, i) => {
+    const t = document.createElement("div");
+    t.className = "thumb";
+    t.onclick = () => goPage(i);
+    const tc = document.createElement("canvas");
+    const ratio = pg.w / pg.h;
+    tc.width = Math.round(TH * ratio);
+    tc.height = TH;
+    tc.getContext("2d").drawImage(pg.canvas, 0, 0, tc.width, tc.height);
+    const img = document.createElement("img");
+    img.src = tc.toDataURL("image/jpeg", 0.7);
+    img.alt = `หน้า ${i+1}`;
+    t.appendChild(img);
+    const num = document.createElement("span");
+    num.className = "num";
+    num.textContent = i + 1;
+    t.appendChild(num);
+    list.appendChild(t);
+  });
+  updateActiveThumb();
+}
+function updateActiveThumb() {
+  const thumbs = document.querySelectorAll(".thumb");
+  thumbs.forEach((t, i) => t.classList.toggle("active", i === currentPage));
+}
+
+// ============ Navigation ============
+function goPage(p) {
+  if (p < 0 || p >= pages.length) return;
+  currentPage = p;
+  document.getElementById("pageInfo").textContent = `หน้า ${p+1} / ${pages.length}`;
+  document.getElementById("prevBtn").disabled = p === 0;
+  document.getElementById("nextBtn").disabled = p === pages.length - 1;
+  updateActiveThumb();
+  renderCurrent();
+}
+document.addEventListener("keydown", e => {
+  if (pages.length === 0) return;
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "ArrowLeft") goPage(currentPage - 1);
+  if (e.key === "ArrowRight") goPage(currentPage + 1);
+});
+
+// ============ Mode ============
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.mode === m));
+  document.getElementById("sliderBox").classList.toggle("hidden", m !== "compare");
+  document.getElementById("singleView").classList.toggle("hidden", m === "compare");
+  renderCurrent();
+}
+
+// ============ Render current page ============
+async function renderCurrent() {
+  if (pages.length === 0) return;
+  const pg = pages[currentPage];
+  const origUrl = await getOriginalUrl(currentPage);
+  const cleanUrl = await getCleanedUrl(currentPage);
+
+  if (mode === "compare") {
+    document.getElementById("beforeImg").src = origUrl;
+    document.getElementById("afterImg").src = cleanUrl;
+  } else {
+    document.getElementById("singleImg").src = mode === "cleaned" ? cleanUrl : origUrl;
+    const lbl = document.getElementById("singleLabel");
+    lbl.textContent = mode === "cleaned" ? "ลบแล้ว" : "ต้นฉบับ";
+  }
+}
+
+function getOriginalUrl(i) {
+  if (originalCache[i]) return Promise.resolve(originalCache[i]);
+  return new Promise(resolve => {
+    const c = pages[i].canvas;
+    const url = c.toDataURL("image/png");
+    originalCache[i] = url;
+    resolve(url);
+  });
+}
+
+async function getCleanedUrl(i) {
+  if (cleanedCache[i]) return cleanedCache[i];
+  // run cleaning on the page canvas
+  const pg = pages[i];
+  const cleaned = await cleanCanvas(pg.canvas);
+  const url = cleaned.toDataURL("image/png");
+  cleanedCache[i] = url;
+  return url;
+}
+
+// ============ OpenCV cleaning algorithm ============
+// Mirrors the Python clean_bgr: HSV blue/red pen mask + protect fills (distance
+// transform) + protect navy headers (density) + protect black text + white fill.
+// (cv.inpaint is unstable on large images in this OpenCV.js WASM build, so the
+//  final fill is a direct white fill — fine because pen sits on white background
+//  and the protect layers above already guard printed text/diagrams.)
+// IMPORTANT: OpenCV.js WASM has a limited heap, so Mats are freed aggressively
+// as soon as they're no longer needed.
+async function cleanCanvas(srcCanvas) {
+  // Run the synchronous OpenCV work on a fresh microtask so the UI can update,
+  // but keep all cv calls within one synchronous block (WASM heap is shared).
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      try {
+        const outCanvas = cleanCanvasSync(srcCanvas);
+        resolve(outCanvas);
+      } catch (e) { reject(e); }
+    }, 0);
+  });
+}
+
+function cleanCanvasSync(srcCanvas) {
+  const src = cv.imread(srcCanvas);
+  const bgr = new cv.Mat();
+  cv.cvtColor(src, bgr, cv.COLOR_RGBA2RGB);  // treat as RGB (=BGR for our purposes)
+  src.delete();
+
+  const hsv = new cv.Mat();
+  cv.cvtColor(bgr, hsv, cv.COLOR_RGB2HSV);
+  const chans = new cv.MatVector();
+  cv.split(hsv, chans);
+  const Hm = chans.get(0), Sm = chans.get(1), Vm = chans.get(2);
+  hsv.delete();
+
+  const bgrChans = new cv.MatVector();
+  cv.split(bgr, bgrChans);
+  const Bm = bgrChans.get(0), Gm = bgrChans.get(1), Rm = bgrChans.get(2);
+
+  // 1. pen mask: blue + red
+  let blue = blueMask(Hm, Sm, Vm);
+  let red = redMask(Hm, Sm, Vm, Rm, Gm, Bm);
+  Bm.delete(); Gm.delete(); Rm.delete(); bgrChans.delete(); chans.delete();
+
+  let raw = cvMatOr(blue, red);
+  red.delete();
+
+  // 2. protect solid fills via distance transform
+  let protectFill = protectFills(raw);
+
+  // 3. protect navy headers (dense high-sat horizontal text) — needs blue + Hm,Sm,Vm
+  let protectText = protectNavyText(Hm, Sm, Vm, blue);
+  blue.delete();
+
+  // 4. protect black text: V<130, S<80 — needs Vm, Sm
+  let protectBlack = protectBlackText(Vm, Sm);
+  Hm.delete(); Sm.delete(); Vm.delete();
+
+  // 5. erase = raw minus protections
+  let erase = new cv.Mat(raw.rows, raw.cols, raw.type());
+  erase.setTo(new cv.Scalar(0, 0, 0, 0));
+  raw.copyTo(erase);
+  raw.delete();
+  erase.setTo(new cv.Scalar(0), protectFill);
+  erase.setTo(new cv.Scalar(0), protectText);
+  erase.setTo(new cv.Scalar(0), protectBlack);
+  protectFill.delete(); protectText.delete(); protectBlack.delete();
+
+  // dilate, blur, threshold
+  let k3 = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3,3));
+  cv.dilate(erase, erase, k3, new cv.Point(-1,-1), 4);
+  cv.GaussianBlur(erase, erase, new cv.Size(0,0), 0.9);
+  let eraseBin = new cv.Mat();
+  cv.threshold(erase, eraseBin, 128, 255, cv.THRESH_BINARY);
+  erase.delete(); k3.delete();
+
+  // 6. white-fill masked pen regions
+  let res = bgr.clone();
+  bgr.delete();
+  res.setTo(new cv.Scalar(255, 255, 255), eraseBin);
+  eraseBin.delete();
+
+  // convert back to RGBA for output canvas
+  const out = new cv.Mat();
+  cv.cvtColor(res, out, cv.COLOR_BGR2RGBA);
+  const outCanvas = document.createElement("canvas");
+  outCanvas.width = out.cols;
+  outCanvas.height = out.rows;
+  cv.imshow(outCanvas, out);
+
+  // cleanup (everything else already freed above)
+  res.delete(); out.delete();
+
+  return outCanvas;
+}
+
+// --- helpers using OpenCV.js ---
+function cvMatOr(a, b) {
+  let dst = new cv.Mat();
+  cv.bitwise_or(a, b, dst);
+  return dst;
+}
+
+// threshold helpers (cv.compare needs Mat, so use cv.threshold).
+// Output is always CV_8U (255/0) for use as a mask.
+function ge(m, val) { // m >= val  -> 255/0
+  let tmp = new cv.Mat();
+  cv.threshold(m, tmp, val - 0.5, 255, cv.THRESH_BINARY);
+  let dst = new cv.Mat(); tmp.convertTo(dst, cv.CV_8U); tmp.delete();
+  return dst;
+}
+function le(m, val) { // m <= val  -> 255/0
+  let tmp = new cv.Mat();
+  cv.threshold(m, tmp, val + 0.5, 255, cv.THRESH_BINARY_INV);
+  let dst = new cv.Mat(); tmp.convertTo(dst, cv.CV_8U); tmp.delete();
+  return dst;
+}
+function gt(m, val) { // m > val
+  let tmp = new cv.Mat();
+  cv.threshold(m, tmp, val, 255, cv.THRESH_BINARY);
+  let dst = new cv.Mat(); tmp.convertTo(dst, cv.CV_8U); tmp.delete();
+  return dst;
+}
+function lt(m, val) { // m < val
+  let tmp = new cv.Mat();
+  cv.threshold(m, tmp, val, 255, cv.THRESH_BINARY_INV);
+  let dst = new cv.Mat(); tmp.convertTo(dst, cv.CV_8U); tmp.delete();
+  return dst;
+}
+
+function blueMask(H, S, V) {
+  // H>=85 & H<=130 & S>=25 & V<=250
+  let m1 = ge(H, 85);
+  let m2 = le(H, 130);
+  let m3 = ge(S, 25);
+  let m4 = le(V, 250);
+  let a = new cv.Mat(), b = new cv.Mat(), dst = new cv.Mat();
+  cv.bitwise_and(m1, m2, a);
+  cv.bitwise_and(a, m3, b);
+  cv.bitwise_and(b, m4, dst);
+  m1.delete(); m2.delete(); m3.delete(); m4.delete(); a.delete(); b.delete();
+  return dst;
+}
+
+function redMask(H, S, V, R, G, B) {
+  // H<=12 or H>=168
+  let lo = le(H, 12);
+  let hi = ge(H, 168);
+  let hsvRed = new cv.Mat();
+  cv.bitwise_or(lo, hi, hsvRed);
+  let sOk = ge(S, 20);
+  let vOk = le(V, 250);
+  let redHsv = new cv.Mat();
+  cv.bitwise_and(hsvRed, sOk, redHsv);
+  cv.bitwise_and(redHsv, vOk, redHsv);
+
+  // RGB red: R-G>35, R-B>35, R<240
+  let rg = new cv.Mat(); cv.subtract(R, G, rg); let rgm = gt(rg, 35); rg.delete();
+  let rb = new cv.Mat(); cv.subtract(R, B, rb); let rbm = gt(rb, 35); rb.delete();
+  let rlt = lt(R, 240);
+  let redRgb = new cv.Mat();
+  cv.bitwise_and(rgm, rbm, redRgb);
+  cv.bitwise_and(redRgb, rlt, redRgb);
+
+  let dst = new cv.Mat();
+  cv.bitwise_or(redHsv, redRgb, dst);
+  lo.delete(); hi.delete(); hsvRed.delete(); sOk.delete(); vOk.delete(); redHsv.delete();
+  rgm.delete(); rbm.delete(); rlt.delete(); redRgb.delete();
+  return dst;
+}
+
+function protectFills(raw) {
+  // distance transform, threshold >6, dilate
+  let dt = new cv.Mat(raw.rows, raw.cols, cv.CV_32F);
+  cv.distanceTransform(raw, dt, cv.DIST_L2, 3);
+  // solid where dt > 6.0
+  let solid = gt(dt, 6.0);
+  let k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5,5));
+  cv.dilate(solid, solid, k, new cv.Point(-1,-1), 2);
+  dt.delete(); k.delete();
+  return solid;
+}
+
+function protectNavyText(H, S, V, blue) {
+  // navy_hs = blue & S>=200 & V>=80 & V<=200
+  let sOk = ge(S, 200);
+  let vLo = ge(V, 80);
+  let vHi = le(V, 200);
+  let navy = new cv.Mat();
+  cv.bitwise_and(blue, sOk, navy);
+  cv.bitwise_and(navy, vLo, navy);
+  cv.bitwise_and(navy, vHi, navy);
+
+  // horizontal close 51x1, vertical close 1x7
+  let kh = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(51,1));
+  let kv = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(1,7));
+  let closed = new cv.Mat();
+  cv.morphologyEx(navy, closed, cv.MORPH_CLOSE, kh);
+  cv.morphologyEx(closed, closed, cv.MORPH_CLOSE, kv);
+
+  // connected components, filter by density >= 0.12, w>=60, h>=10, area>=80
+  let labels = new cv.Mat(); let stats = new cv.Mat(); let cents = new cv.Mat();
+  let n = cv.connectedComponentsWithStats(closed, labels, stats, cents, 8, cv.CV_32S);
+  let seed = new cv.Mat(navy.rows, navy.cols, cv.CV_8U, new cv.Scalar(0));
+  for (let i = 1; i < n; i++) {
+    let x = stats.intAt(i, cv.CC_STAT_LEFT);
+    let y = stats.intAt(i, cv.CC_STAT_TOP);
+    let w = stats.intAt(i, cv.CC_STAT_WIDTH);
+    let h = stats.intAt(i, cv.CC_STAT_HEIGHT);
+    let area = stats.intAt(i, cv.CC_STAT_AREA);
+    if (w < 60 || h < 10 || area < 80) continue;
+    // count navy pixels in bbox
+    let roi = navy.roi(new cv.Rect(x, y, w, h));
+    let nz = cv.countNonZero(roi);
+    roi.delete();
+    let dens = nz / (w * h);
+    if (dens >= 0.12) {
+      // set this component in seed: mask = (labels == i)
+      let eqMat = new cv.Mat(labels.rows, labels.cols, labels.type(), new cv.Scalar(i));
+      cv.compare(labels, eqMat, eqMat, cv.CMP_EQ);
+      seed.setTo(new cv.Scalar(255), eqMat);
+      eqMat.delete();
+    }
+  }
+  let kd = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(7,9));
+  cv.dilate(seed, seed, kd, new cv.Point(-1,-1), 2);
+
+  sOk.delete(); vLo.delete(); vHi.delete(); navy.delete();
+  kh.delete(); kv.delete(); closed.delete();
+  labels.delete(); stats.delete(); cents.delete(); kd.delete();
+  return seed;
+}
+
+function protectBlackText(V, S) {
+  // V<130, S<80
+  let vOk = lt(V, 130);
+  let sOk = lt(S, 80);
+  let black = new cv.Mat();
+  cv.bitwise_and(vOk, sOk, black);
+  let k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3,3));
+  cv.dilate(black, black, k, new cv.Point(-1,-1), 2);
+  vOk.delete(); sOk.delete(); k.delete();
+  return black;
+}
+
+// ============ Compare slider drag ============
+(function setupSlider() {
+  const box = document.getElementById("sliderBox");
+  let dragging = false;
+  function setFromX(clientX) {
+    const r = box.getBoundingClientRect();
+    let p = ((clientX - r.left) / r.width) * 100;
+    p = Math.max(0, Math.min(100, p));
+    document.getElementById("divider").style.left = p + "%";
+    document.getElementById("handle").style.left = p + "%";
+    document.getElementById("beforeImg").style.clipPath = `inset(0 ${100 - p}% 0 0)`;
+  }
+  box.addEventListener("pointerdown", e => { dragging = true; setFromX(e.clientX); e.preventDefault(); });
+  window.addEventListener("pointermove", e => { if (dragging) setFromX(e.clientX); });
+  window.addEventListener("pointerup", () => { dragging = false; });
+  // keyboard on handle
+  const handle = document.getElementById("handle");
+  handle.tabIndex = 0;
+  handle.addEventListener("keydown", e => {
+    const cur = parseFloat(document.getElementById("handle").style.left);
+    if (e.key === "ArrowLeft") setFromX(box.getBoundingClientRect().left + (cur-4)/100*box.getBoundingClientRect().width);
+    if (e.key === "ArrowRight") setFromX(box.getBoundingClientRect().left + (cur+4)/100*box.getBoundingClientRect().width);
+  });
+})();
+
+// ============ Download cleaned PDF ============
+async function downloadCleanedPdf() {
+  if (building) return;
+  building = true;
+  const btn = document.getElementById("downloadBtn");
+  const label = document.getElementById("downloadLabel");
+  const prog = document.getElementById("buildProgress");
+  const txt = document.getElementById("buildText");
+  const errEl = document.getElementById("buildErr");
+  btn.disabled = true;
+  label.innerHTML = '<span class="spin"></span> กำลังประมวลผล...';
+  prog.classList.remove("hidden");
+  txt.classList.remove("hidden");
+  errEl.classList.add("hidden");
+  const bar = document.getElementById("buildBar");
+  bar.style.width = "0%";
+
+  try {
+    // PDF in points (72 dpi). Render each page at scale that yields good quality.
+    // Use jsPDF with custom page sizes.
+    const { jsPDF } = window.jspdf;
+    let pdf = null;
+    for (let i = 0; i < pages.length; i++) {
+      txt.textContent = `กำลังลบลายมือหน้า ${i+1}/${pages.length}...`;
+      bar.style.width = Math.round((i / pages.length) * 100) + "%";
+      const cleanUrl = await getCleanedUrl(i);
+      // get original page size in points from pdf.js
+      const page = await pdfDoc.getPage(i + 1);
+      const vp1 = page.getViewport({ scale: 1 });
+      const wPt = vp1.width;
+      const hPt = vp1.height;
+      if (pdf === null) {
+        pdf = new jsPDF({ orientation: wPt > hPt ? "landscape" : "portrait", unit: "pt", format: [wPt, hPt] });
+      } else {
+        pdf.addPage([wPt, hPt], wPt > hPt ? "landscape" : "portrait");
+      }
+      // add image
+      pdf.addImage(cleanUrl, "PNG", 0, 0, wPt, hPt, undefined, "FAST");
+      // yield to UI
+      await new Promise(r => setTimeout(r, 0));
+    }
+    bar.style.width = "100%";
+    txt.textContent = "เสร็จสิ้น — กำลังดาวน์โหลด...";
+    const outName = fileName.replace(/\.pdf$/i, "") + "_cleaned.pdf";
+    pdf.save(outName);
+    label.textContent = "ดาวน์โหลดอีกครั้ง";
+    btn.disabled = false;
+    building = false;
+  } catch (e) {
+    console.error(e);
+    errEl.textContent = "เกิดข้อผิดพลาด: " + e.message;
+    errEl.classList.remove("hidden");
+    label.textContent = "ดาวน์โหลด PDF ที่ลบลายมือแล้ว";
+    btn.disabled = false;
+    building = false;
+    prog.classList.add("hidden");
+    txt.classList.add("hidden");
+  }
+}
+
+// expose for onclick
+window.onFileSelected = onFileSelected;
+window.resetAll = resetAll;
+window.setMode = setMode;
+window.goPage = goPage;
+window.prevPage = () => goPage(currentPage - 1);
+window.nextPage = () => goPage(currentPage + 1);
+window.downloadCleanedPdf = downloadCleanedPdf;
+</script>
+</body>
+</html>
