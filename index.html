@@ -404,12 +404,12 @@ async function getDbnetSession() {
   return dbnetSession;
 }
 
-// Run SegFormer on a canvas, return a CV_8U text mask (255 = printed text, 0 = not).
+// Run SegFormer on a canvas, return BOTH text mask and handwriting mask.
 // SegFormer output: [1, 3, H, W] logits — class 0=background, 1=text, 2=handwriting
+// Returns { textMask: CV_8U (255=printed text), hwMask: CV_8U (255=handwriting) }
 async function dbnetTextMask(srcCanvas) {
   const session = await getDbnetSession();
   if (!session) return null;
-  // SegFormer expects 512x512 input
   const SIZE = 512;
   let h = srcCanvas.height, w = srcCanvas.width;
   const tmp = document.createElement("canvas");
@@ -430,31 +430,33 @@ async function dbnetTextMask(srcCanvas) {
   const dims = out.dims;
   const oh = dims[dims.length - 2], ow = dims[dims.length - 1];
   const nClasses = dims[1];
-  // build CV_8U text mask at original resolution
-  // class 1 = text → protect; class 2 = handwriting → don't protect
+  // Build BOTH masks at original resolution
   const textMask = cv.Mat.zeros(h, w, cv.CV_8U);
-  const arr = new Uint8Array(h * w);
+  const hwMask = cv.Mat.zeros(h, w, cv.CV_8U);
+  const textArr = new Uint8Array(h * w);
+  const hwArr = new Uint8Array(h * w);
   const sx = w / ow, sy = h / oh;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const oy = Math.min(oh - 1, Math.floor(y / sy));
       const ox = Math.min(ow - 1, Math.floor(x / sx));
-      // argmax over classes
       let maxVal = -1e9, maxClass = 0;
       for (let c = 0; c < nClasses; c++) {
         const v = out.data[c * oh * ow + oy * ow + ox];
         if (v > maxVal) { maxVal = v; maxClass = c; }
       }
-      // class 1 = text → protect (255); class 0,2 = background/handwriting → erase (0)
-      if (maxClass === 1) arr[y * w + x] = 255;
+      if (maxClass === 1) textArr[y * w + x] = 255;       // text → protect
+      else if (maxClass === 2) hwArr[y * w + x] = 255;     // handwriting → erase
     }
   }
-  textMask.data.set(arr);
-  // dilate to cover glyph edges
+  textMask.data.set(textArr);
+  hwMask.data.set(hwArr);
+  // dilate both masks
   const k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(7, 7));
   cv.dilate(textMask, textMask, k, new cv.Point(-1, -1), 1);
+  cv.dilate(hwMask, hwMask, k, new cv.Point(-1, -1), 1);
   k.delete();
-  return textMask;
+  return { textMask, hwMask };
 }
 
 // ============ pdf.js setup ============
@@ -667,18 +669,17 @@ async function getCleanedUrl(i) {
 // IMPORTANT: OpenCV.js WASM has a limited heap, so Mats are freed aggressively
 // as soon as they're no longer needed.
 async function cleanCanvas(srcCanvas) {
-  // Step 1: run DBNet (async, ONNX) to detect printed-text regions.
-  // Step 2: run the synchronous OpenCV cleaning using the DBNet text mask.
-  let dbnetMask = null;
+  // Step 1: run SegFormer to get text mask + handwriting mask
+  let segResult = null;
   try {
-    dbnetMask = await dbnetTextMask(srcCanvas);
+    segResult = await dbnetTextMask(srcCanvas);
   } catch (e) {
-    console.warn("DBNet failed, falling back to color-only:", e.message);
+    console.warn("SegFormer failed, falling back to color-only:", e.message);
   }
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       try {
-        const outCanvas = cleanCanvasSync(srcCanvas, dbnetMask);
+        const outCanvas = cleanCanvasSync(srcCanvas, segResult);
         resolve(outCanvas);
       } catch (e) { reject(e); }
     }, 0);
@@ -723,10 +724,10 @@ function inpaintTiled(src, mask, dst, tileSize, radius) {
 }
 function overlap2(tileSize) { return Math.floor(tileSize * 0.15); }
 
-function cleanCanvasSync(srcCanvas, dbnetMask) {
+function cleanCanvasSync(srcCanvas, segResult) {
   const src = cv.imread(srcCanvas);
   const bgr = new cv.Mat();
-  cv.cvtColor(src, bgr, cv.COLOR_RGBA2RGB);  // treat as RGB (=BGR for our purposes)
+  cv.cvtColor(src, bgr, cv.COLOR_RGBA2RGB);
   src.delete();
 
   const hsv = new cv.Mat();
@@ -746,14 +747,17 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
   let green = greenMask(Hm, Sm, Vm);
   Bm.delete(); Gm.delete(); Rm.delete(); bgrChans.delete(); chans.delete();
 
-  // 1a. Don't protect ALL red — that prevents red handwriting from being erased.
-  // Instead, rely on DBNet text mask (merged into protectText later) to protect
-  // printed red text/headers/graphs. Red handwriting (circles, strikethroughs)
-  // is NOT detected by DBNet as text, so it will be erased.
-  // Only protect red if DBNet is not available (fallback).
+  // Extract text mask and handwriting mask from SegFormer result
+  let segTextMask = null;
+  let segHwMask = null;
+  if (segResult) {
+    segTextMask = segResult.textMask;
+    segHwMask = segResult.hwMask;
+  }
+
+  // 1a. protect ALL red pixels as printed (fallback when no SegFormer)
   let protectRed = null;
-  if (!dbnetMask || dbnetMask.isDeleted()) {
-    // Fallback: protect all red when DBNet is not available
+  if (!segTextMask) {
     protectRed = red.clone();
   }
 
@@ -779,15 +783,28 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
   let protectText = protectNavyText(Hm, Sm, Vm, blue);
   blue.delete();
 
-  // 3b. Merge DBNet text mask (covers ALL printed text incl. black) into protectText.
-  //     This is the key addition: DBNet detects printed text regardless of color,
-  //     so black printed text is now protected, allowing black handwriting to be erased.
-  if (dbnetMask && !dbnetMask.isDeleted()) {
+  // 3b. Merge SegFormer text mask into protectText — protects ALL printed text
+  //     (black, blue, red) regardless of color. This is the key: SegFormer
+  //     distinguishes printed text from handwriting by STRUCTURE, not color.
+  if (segTextMask && !segTextMask.isDeleted()) {
     let merged = new cv.Mat();
-    cv.bitwise_or(protectText, dbnetMask, merged);
+    cv.bitwise_or(protectText, segTextMask, merged);
     protectText.delete();
     protectText = merged;
-    dbnetMask.delete();
+    segTextMask.delete();
+  }
+
+  // 3c. If SegFormer found handwriting mask, use it as the PRIMARY erase source.
+  //     This is more accurate than HSV color mask — SegFormer identifies handwriting
+  //     by structure, not color. So blue pen over black text is correctly identified
+  //     as handwriting (not text), and black printed text is correctly protected.
+  if (segHwMask && !segHwMask.isDeleted()) {
+    // Replace raw with SegFormer handwriting mask — more accurate than color mask
+    raw.delete();
+    raw = segHwMask.clone();
+    // also keep colored for colored-specific erase path
+    // intersect segHwMask with colored to get colored handwriting
+    // (rest will be handled by blackPen path or white-fill)
   }
 
   // 4. No protectBlackText — it cancels blackPenMask (both use opening).
@@ -844,6 +861,7 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
   erase.delete(); k3.delete();
   colored.delete(); blackPen.delete();
   if (protectRed) protectRed.delete();
+  if (segHwMask) segHwMask.delete();
   protectText.delete();
 
   // 6. White-fill ALL erase areas (colored + black pen). Inpainting creates
