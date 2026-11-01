@@ -732,9 +732,19 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
     dbnetMask.delete();
   }
 
-  // 4. No protectBlackText — it cancels blackPenMask (both use opening).
-  //    Instead, rely on inpainting to restore any printed text caught in the
-  //    erase mask. The inpaintTiled step reconstructs from neighboring pixels.
+  // 4. CRITICAL: Remove colored pixels from protectText — protectText should
+  //    NEVER protect blue/red/green handwriting. Only protect BLACK text.
+  //    This prevents blue ink from being "protected" and left as brown residue.
+  {
+    let notColored = new cv.Mat();
+    cv.bitwise_not(colored, notColored);
+    let protectedClean = new cv.Mat();
+    cv.bitwise_and(protectText, notColored, protectedClean);
+    protectText.delete();
+    protectText = protectedClean;
+    notColored.delete();
+  }
+
   Hm.delete(); Sm.delete(); Vm.delete();
 
   // 5. erase = raw minus protections (fill + text + red-printed)
