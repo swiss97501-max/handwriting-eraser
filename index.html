@@ -160,6 +160,43 @@
 </head>
 <body class="notranslate">
 
+<!-- Anti-tamper: protect critical text from extensions that rewrite content -->
+<script>
+(function(){
+  // Store original text of key elements
+  var orig = {};
+  function snap(){
+    document.querySelectorAll('[data-orig]').forEach(function(el){
+      orig[el.dataset.orig] = el.textContent;
+    });
+  }
+  function check(){
+    document.querySelectorAll('[data-orig]').forEach(function(el){
+      if(el.textContent !== orig[el.dataset.orig]){
+        el.textContent = orig[el.dataset.orig];
+      }
+    });
+  }
+  // Run after DOM loads
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded', function(){ snap(); setInterval(check, 500); });
+  } else {
+    snap(); setInterval(check, 500);
+  }
+  // Also use MutationObserver to catch changes
+  var mo = new MutationObserver(function(){
+    document.querySelectorAll('[data-orig]').forEach(function(el){
+      if(el.textContent !== orig[el.dataset.orig]){
+        el.textContent = orig[el.dataset.orig];
+      }
+    });
+  });
+  document.addEventListener('DOMContentLoaded', function(){
+    mo.observe(document.body, {childList:true, subtree:true, characterData:true});
+  });
+})();
+</script>
+
 <!-- OpenCV.js, pdf.js, jsPDF, ONNX Runtime Web loaded from CDN -->
 <script async src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js" onload="onCvReady()"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -176,7 +213,7 @@
   </div>
   <div>
     <h1>Handwriting Eraser</h1>
-    <span class="sub">ลบลายมือจากข้อสอบ — ทำงานในเบราว์เซอร์</span>
+    <span class="sub" data-orig="subtitle">ลบลายมือจากข้อสอบ — ทำงานในเบราว์เซอร์</span>
   </div>
   <div class="spacer"></div>
   <button id="newBtn" class="btn outline sm hidden" onclick="resetAll()">
@@ -205,7 +242,7 @@
       <p class="hint">หรือกดเพื่อเลือกไฟล์</p>
       <button class="btn" onclick="event.stopPropagation(); document.getElementById('fileInput').click()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        เลือกไฟล์ PDF
+        <span data-orig="btn1">เลือกไฟล์ PDF</span>
       </button>
       <input type="file" id="fileInput" accept="application/pdf,.pdf" class="hidden" onchange="onFileSelected(this.files[0])">
     </div>
@@ -233,9 +270,9 @@
   <section id="workspace" class="hidden">
     <div class="toolbar">
       <div class="tabs">
-        <button class="tab active" data-mode="compare" onclick="setMode('compare')">เปรียบเทียบ</button>
-        <button class="tab" data-mode="cleaned" onclick="setMode('cleaned')">ลบแล้ว</button>
-        <button class="tab" data-mode="original" onclick="setMode('original')">ต้นฉบับ</button>
+        <button class="tab active" data-mode="compare" data-orig="tab1" onclick="setMode('compare')">เปรียบเทียบ</button>
+        <button class="tab" data-mode="cleaned" data-orig="tab2" onclick="setMode('cleaned')">ลบแล้ว</button>
+        <button class="tab" data-mode="original" data-orig="tab3" onclick="setMode('original')">ต้นฉบับ</button>
       </div>
       <div class="pager">
         <button class="iconbtn" id="prevBtn" onclick="prevPage()" aria-label="หน้าก่อนหน้า">
