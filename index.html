@@ -862,17 +862,37 @@ function cleanCanvasSync(srcCanvas, segResult) {
   erase.delete(); k3.delete();
   colored.delete(); blackPen.delete();
   if (protectRed) protectRed.delete();
-  if (segHwMask) segHwMask.delete();
   protectText.delete();
 
-  // 6. White-fill ALL erase areas (colored + black pen). Inpainting creates
-  //     brownish artifacts from neighboring pixels; white fill is cleaner since
-  //     DBNet protectText already guards printed text underneath.
+  // 6. White-fill ALL erase areas. Use BOTH eraseColoredBin AND the full raw mask
+  //     (which includes SegFormer hwMask) to ensure nothing is missed.
   let res = bgr.clone();
   bgr.delete();
-  res.setTo(new cv.Scalar(255, 255, 255), eraseColoredBin);
+  // Combine all erase masks into one final mask
+  let finalErase = new cv.Mat();
+  cv.bitwise_or(eraseColoredBin, eraseBlackBin, finalErase);
+  // Also add raw SegFormer hwMask if present (covers handwriting that color mask missed)
+  if (segHwMask && !segHwMask.isDeleted()) {
+    let combined = new cv.Mat();
+    cv.bitwise_or(finalErase, segHwMask, combined);
+    finalErase.delete();
+    finalErase = combined;
+  }
+  // Dilate final erase to cover anti-aliased edges
+  let kd = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5));
+  cv.dilate(finalErase, finalErase, kd, new cv.Point(-1, -1), 2);
+  kd.delete();
+  // Re-subtract protectText one more time to be safe
+  let protFinal = new cv.Mat();
+  cv.dilate(protectText, protFinal, cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3)), new cv.Point(-1, -1), 2);
+  let notProtFinal = new cv.Mat();
+  cv.bitwise_not(protFinal, notProtFinal);
+  cv.bitwise_and(finalErase, notProtFinal, finalErase);
+  protFinal.delete(); notProtFinal.delete();
+  // Apply white fill
+  res.setTo(new cv.Scalar(255, 255, 255), finalErase);
+  finalErase.delete();
   eraseColoredBin.delete();
-  res.setTo(new cv.Scalar(255, 255, 255), eraseBlackBin);
   eraseBlackBin.delete();
 
   // convert back to RGBA for output canvas
