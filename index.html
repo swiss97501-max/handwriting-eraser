@@ -862,7 +862,7 @@ function cleanCanvasSync(srcCanvas, segResult) {
   erase.delete(); k3.delete();
   colored.delete(); blackPen.delete();
   if (protectRed) protectRed.delete();
-  protectText.delete();
+  // NOTE: protectText and segHwMask deleted AFTER final erase (section 6)
 
   // 6. White-fill ALL erase areas. Use BOTH eraseColoredBin AND the full raw mask
   //     (which includes SegFormer hwMask) to ensure nothing is missed.
@@ -894,6 +894,9 @@ function cleanCanvasSync(srcCanvas, segResult) {
   finalErase.delete();
   eraseColoredBin.delete();
   eraseBlackBin.delete();
+  // Now safe to delete protectText and segHwMask
+  protectText.delete();
+  if (segHwMask && !segHwMask.isDeleted()) segHwMask.delete();
 
   // convert back to RGBA for output canvas
   const out = new cv.Mat();
