@@ -330,7 +330,7 @@ async function getDbnetSession() {
   dbnetLoading = true;
   try {
     ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/";
-    dbnetSession = await ort.InferenceSession.create("https://swiss97501-max.github.io/handwriting-eraser/models/det.onnx");
+    dbnetSession = await ort.InferenceSession.create("https://swiss97501-max.github.io/handwriting-eraser/models/det_v4.onnx");
     console.log("DBNet loaded:", dbnetSession.inputNames, dbnetSession.outputNames);
   } catch (e) {
     console.error("DBNet load failed:", e);
@@ -380,8 +380,8 @@ async function dbnetTextMask(srcCanvas) {
     }
   }
   textMask.data.set(arr);
-  // dilate to cover glyph edges
-  const k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(11, 11));
+  // dilate to cover glyph edges (larger radius for better text protection)
+  const k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(17, 17));
   cv.dilate(textMask, textMask, k, new cv.Point(-1, -1), 1);
   k.delete();
   return textMask;
@@ -1069,9 +1069,10 @@ function blackPenInBlankSpaces(V, S) {
 // build — returns garbage values). Opening with a small kernel removes thin
 // black-pen mask: ALL dark low-saturation pixels. With DBNet protecting
 // printed text, this catches all black handwriting (no opening needed).
+// Lower V threshold (V<120) to catch only truly dark ink, not faint printed text.
 function blackPenMask(bgr, V, S) {
-  // dark low-sat (black/dark gray ink): V<140 AND S<85
-  let vBin = new cv.Mat(); cv.threshold(V, vBin, 139.5, 255, cv.THRESH_BINARY_INV);
+  // dark low-sat (black/dark gray ink): V<120 AND S<85
+  let vBin = new cv.Mat(); cv.threshold(V, vBin, 119.5, 255, cv.THRESH_BINARY_INV);
   let sBin = new cv.Mat(); cv.threshold(S, sBin, 84.5, 255, cv.THRESH_BINARY_INV);
   let dark = new cv.Mat();
   cv.bitwise_and(vBin, sBin, dark);
