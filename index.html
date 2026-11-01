@@ -330,7 +330,7 @@ async function getDbnetSession() {
   dbnetLoading = true;
   try {
     ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/";
-    dbnetSession = await ort.InferenceSession.create("models/det.onnx");
+    dbnetSession = await ort.InferenceSession.create("https://swiss97501-max.github.io/handwriting-eraser/models/det.onnx");
     console.log("DBNet loaded:", dbnetSession.inputNames, dbnetSession.outputNames);
   } catch (e) {
     console.error("DBNet load failed:", e);
