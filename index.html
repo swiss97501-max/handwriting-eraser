@@ -330,16 +330,37 @@ async function getDbnetSession() {
   dbnetLoading = true;
   try {
     ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.0/dist/";
+    // Increase WASM memory (default ~256MB, need ~512MB for 52MB model)
+    ort.env.wasm.numThreads = 1;
     // Fetch model as ArrayBuffer first (more memory-efficient than URL loading)
     const modelUrl = "https://swiss97501-max.github.io/handwriting-eraser/models/segformer_hw_final.onnx";
     console.log("Fetching SegFormer model...");
     const resp = await fetch(modelUrl);
     const arrayBuffer = await resp.arrayBuffer();
     console.log("Model fetched:", (arrayBuffer.byteLength / 1024 / 1024).toFixed(1) + "MB");
-    dbnetSession = await ort.InferenceSession.create(arrayBuffer);
+    // Try with explicit memory config
+    const sessionOptions = {
+      executionProviders: ['wasm'],
+      graphOptimizationLevel: 'all',
+      enableCpuMemArena: false,
+      enableMemPattern: false,
+      wasm: {
+        numThreads: 1,
+        simd: true,
+      }
+    };
+    dbnetSession = await ort.InferenceSession.create(arrayBuffer, sessionOptions);
     console.log("SegFormer loaded:", dbnetSession.inputNames, dbnetSession.outputNames);
   } catch (e) {
     console.error("SegFormer load failed:", e);
+    // Fallback: try DBNet v4 (smaller, 4.7MB)
+    try {
+      console.log("Falling back to DBNet v4...");
+      dbnetSession = await ort.InferenceSession.create("https://swiss97501-max.github.io/handwriting-eraser/models/det_v4.onnx");
+      console.log("DBNet v4 loaded (fallback):", dbnetSession.inputNames, dbnetSession.outputNames);
+    } catch (e2) {
+      console.error("DBNet fallback also failed:", e2);
+    }
   }
   dbnetLoading = false;
   return dbnetSession;
