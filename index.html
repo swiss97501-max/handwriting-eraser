@@ -374,7 +374,7 @@ async function onFileSelected(file) {
     currentPage = 0;
     // render all pages to canvases at ~100 DPI (kept moderate for browser memory
     // and cv.inpaint stability in WASM)
-    const scale = 1.0;
+    const scale = 1.5;
     for (let i = 1; i <= pdfDoc.numPages; i++) {
       showOverlay(`กำลังเรนเดอร์หน้า ${i}/${pdfDoc.numPages}...`);
       const page = await pdfDoc.getPage(i);
@@ -638,9 +638,9 @@ function cleanCanvasSync(srcCanvas) {
   erase.setTo(new cv.Scalar(0), protectFill);
   erase.setTo(new cv.Scalar(0), protectText);
   erase.setTo(new cv.Scalar(0), protectRed);
-  protectFill.delete(); protectText.delete();
-  // keep protectRed — re-subtract after dilation to prevent erase bleed into
-  // protected red borders/headers.
+  protectFill.delete();
+  // keep protectText and protectRed — re-subtract after dilation to prevent
+  // erase bleed into protected blue/red text areas.
 
   // dilate (small), blur, threshold — only for COLORED pen (to be inpainted)
   let k3 = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3,3));
@@ -651,13 +651,19 @@ function cleanCanvasSync(srcCanvas) {
   let eraseColoredBin = new cv.Mat();
   cv.threshold(eraseColored, eraseColoredBin, 128, 255, cv.THRESH_BINARY);
   eraseColored.delete();
-  // re-subtract dilated protectRed so dilation bleed doesn't touch printed red
+  // re-subtract dilated protectRed AND protectText so dilation bleed doesn't
+  // touch printed red/blue elements
   let protRedDil = new cv.Mat();
   cv.dilate(protectRed, protRedDil, k3, new cv.Point(-1,-1), 3);
+  let protTextDil = new cv.Mat();
+  cv.dilate(protectText, protTextDil, k3, new cv.Point(-1,-1), 3);
+  let protCombined = new cv.Mat();
+  cv.bitwise_or(protRedDil, protTextDil, protCombined);
+  protRedDil.delete(); protTextDil.delete();
   let notProt = new cv.Mat();
-  cv.bitwise_not(protRedDil, notProt);
+  cv.bitwise_not(protCombined, notProt);
   cv.bitwise_and(eraseColoredBin, notProt, eraseColoredBin);
-  notProt.delete(); protRedDil.delete();
+  notProt.delete(); protCombined.delete();
 
   // black pen mask: white-fill directly (handwriting is in blank spaces,
   // no need to inpaint/restore). NO dilation to protect text band edges.
@@ -667,7 +673,7 @@ function cleanCanvasSync(srcCanvas) {
   cv.threshold(eraseBlack, eraseBlackBin, 128, 255, cv.THRESH_BINARY);
   eraseBlack.delete();
   erase.delete(); k3.delete();
-  colored.delete(); blackPen.delete(); protectRed.delete();
+  colored.delete(); blackPen.delete(); protectRed.delete(); protectText.delete();
 
   // 6a. Inpaint colored pen areas (restores printed text under colored ink).
   //     Skip inpainting entirely if the colored mask is empty (e.g. all-black ink).
@@ -732,10 +738,10 @@ function lt(m, val) { // m < val
 }
 
 function blueMask(H, S, V) {
-  // H>=85 & H<=130 & S>=25 & V<=250
-  let m1 = ge(H, 85);
-  let m2 = le(H, 130);
-  let m3 = ge(S, 25);
+  // Wider range: H 80-135, S>=15 (catches low-sat blue like กลางภาค56 S=55)
+  let m1 = ge(H, 80);
+  let m2 = le(H, 135);
+  let m3 = ge(S, 15);
   let m4 = le(V, 250);
   let a = new cv.Mat(), b = new cv.Mat(), dst = new cv.Mat();
   cv.bitwise_and(m1, m2, a);
@@ -746,20 +752,20 @@ function blueMask(H, S, V) {
 }
 
 function redMask(H, S, V, R, G, B) {
-  // H<=12 or H>=168
-  let lo = le(H, 12);
-  let hi = ge(H, 168);
+  // Wider: H<=15 or H>=165 (catches H=17 of MTH101 Assignment-2), S>=15
+  let lo = le(H, 15);
+  let hi = ge(H, 165);
   let hsvRed = new cv.Mat();
   cv.bitwise_or(lo, hi, hsvRed);
-  let sOk = ge(S, 20);
+  let sOk = ge(S, 15);
   let vOk = le(V, 250);
   let redHsv = new cv.Mat();
   cv.bitwise_and(hsvRed, sOk, redHsv);
   cv.bitwise_and(redHsv, vOk, redHsv);
 
-  // RGB red: R-G>35, R-B>35, R<240
-  let rg = new cv.Mat(); cv.subtract(R, G, rg); let rgm = gt(rg, 35); rg.delete();
-  let rb = new cv.Mat(); cv.subtract(R, B, rb); let rbm = gt(rb, 35); rb.delete();
+  // RGB red: R-G>25, R-B>25, R<240 (lowered from 35 to catch light reds)
+  let rg = new cv.Mat(); cv.subtract(R, G, rg); let rgm = gt(rg, 25); rg.delete();
+  let rb = new cv.Mat(); cv.subtract(R, B, rb); let rbm = gt(rb, 25); rb.delete();
   let rlt = lt(R, 240);
   let redRgb = new cv.Mat();
   cv.bitwise_and(rgm, rbm, redRgb);
@@ -859,10 +865,9 @@ function protectFills(raw) {
 }
 
 function protectNavyText(H, S, V, blue) {
-  // Protect blue printed text: covers blue hue across wide saturation and value
-  // ranges. Pen blue is mostly low-saturation bright (S<40), so S>=40 catches
-  // printed text while allowing most pen ink to be erased.
-  let sOk = ge(S, 40);
+  // Protect blue printed text: S>=15 (matches blueMask threshold) so all blue
+  // printed text is protected, not just high-saturation navy.
+  let sOk = ge(S, 15);
   let vLo = ge(V, 50);
   let vHi = le(V, 255);
   let navy = new cv.Mat();
