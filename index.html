@@ -753,7 +753,8 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
   let k3 = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5,5));
   let eraseColored = new cv.Mat();
   cv.bitwise_and(erase, colored, eraseColored);
-  cv.dilate(eraseColored, eraseColored, k3, new cv.Point(-1,-1), 3);
+  // Dilate colored mask MORE to cover brown anti-aliased edges of ink
+  cv.dilate(eraseColored, eraseColored, k3, new cv.Point(-1,-1), 5);
   cv.GaussianBlur(eraseColored, eraseColored, new cv.Size(0,0), 1.0);
   let eraseColoredBin = new cv.Mat();
   cv.threshold(eraseColored, eraseColoredBin, 128, 255, cv.THRESH_BINARY);
