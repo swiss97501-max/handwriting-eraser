@@ -158,10 +158,11 @@
 </head>
 <body>
 
-<!-- OpenCV.js, pdf.js, jsPDF loaded from CDN -->
+<!-- OpenCV.js, pdf.js, jsPDF, ONNX Runtime Web loaded from CDN -->
 <script async src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js" onload="onCvReady()"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/ort.min.js"></script>
 
 <header>
   <div class="logo">
@@ -314,6 +315,77 @@ let cleanedCache = {};     // index -> dataURL
 let originalCache = {};    // index -> dataURL (full)
 let fileName = "document.pdf";
 let building = false;
+
+// ============ DBNet (ONNX text detection) ============
+let dbnetSession = null;
+let dbnetLoading = false;
+// Load DBNet model lazily on first use (2.4MB, ~1-2s)
+async function getDbnetSession() {
+  if (dbnetSession) return dbnetSession;
+  if (dbnetLoading) {
+    // wait for ongoing load
+    while (dbnetLoading) { await new Promise(r => setTimeout(r, 100)); }
+    return dbnetSession;
+  }
+  dbnetLoading = true;
+  try {
+    ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/";
+    dbnetSession = await ort.InferenceSession.create("models/det.onnx");
+    console.log("DBNet loaded:", dbnetSession.inputNames, dbnetSession.outputNames);
+  } catch (e) {
+    console.error("DBNet load failed:", e);
+  }
+  dbnetLoading = false;
+  return dbnetSession;
+}
+
+// Run DBNet on a canvas, return a CV_8U text mask (255 = printed text, 0 = not).
+async function dbnetTextMask(srcCanvas) {
+  const session = await getDbnetSession();
+  if (!session) return null;
+  // preprocess: resize to max 1536, pad to multiple of 32
+  const MAX_SIDE = 1536;
+  let h = srcCanvas.height, w = srcCanvas.width;
+  let ratio = Math.min(MAX_SIDE / h, MAX_SIDE / w, 1.5);
+  let nh = Math.round(h * ratio), nw = Math.round(w * ratio);
+  nh = Math.ceil(nh / 32) * 32;
+  nw = Math.ceil(nw / 32) * 32;
+  const tmp = document.createElement("canvas");
+  tmp.width = nw; tmp.height = nh;
+  tmp.getContext("2d").drawImage(srcCanvas, 0, 0, nw, nh);
+  const imgData = tmp.getContext("2d").getImageData(0, 0, nw, nh);
+  const float32 = new Float32Array(3 * nh * nw);
+  const mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225];
+  for (let i = 0; i < nh * nw; i++) {
+    float32[0 * nh * nw + i] = (imgData.data[i*4]/255 - mean[0]) / std[0];
+    float32[1 * nh * nw + i] = (imgData.data[i*4+1]/255 - mean[1]) / std[1];
+    float32[2 * nh * nw + i] = (imgData.data[i*4+2]/255 - mean[2]) / std[2];
+  }
+  const tensor = new ort.Tensor("float32", float32, [1, 3, nh, nw]);
+  const feeds = {}; feeds[session.inputNames[0]] = tensor;
+  const results = await session.run(feeds);
+  const out = results[session.outputNames[0]];
+  const dims = out.dims;
+  const oh = dims[dims.length - 2], ow = dims[dims.length - 1];
+  // build CV_8U mask at original resolution
+  const textMask = cv.Mat.zeros(h, w, cv.CV_8U);
+  const sx = w / ow, sy = h / oh;
+  // write to a plain array then copy into Mat via data setter
+  const arr = new Uint8Array(h * w);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const oy = Math.min(oh - 1, Math.floor(y / sy));
+      const ox = Math.min(ow - 1, Math.floor(x / sx));
+      if (out.data[oy * ow + ox] > 0.1) arr[y * w + x] = 255;
+    }
+  }
+  textMask.data.set(arr);
+  // dilate to cover glyph edges
+  const k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(11, 11));
+  cv.dilate(textMask, textMask, k, new cv.Point(-1, -1), 1);
+  k.delete();
+  return textMask;
+}
 
 // ============ pdf.js setup ============
 if (window.pdfjsLib) {
@@ -525,12 +597,18 @@ async function getCleanedUrl(i) {
 // IMPORTANT: OpenCV.js WASM has a limited heap, so Mats are freed aggressively
 // as soon as they're no longer needed.
 async function cleanCanvas(srcCanvas) {
-  // Run the synchronous OpenCV work on a fresh microtask so the UI can update,
-  // but keep all cv calls within one synchronous block (WASM heap is shared).
+  // Step 1: run DBNet (async, ONNX) to detect printed-text regions.
+  // Step 2: run the synchronous OpenCV cleaning using the DBNet text mask.
+  let dbnetMask = null;
+  try {
+    dbnetMask = await dbnetTextMask(srcCanvas);
+  } catch (e) {
+    console.warn("DBNet failed, falling back to color-only:", e.message);
+  }
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       try {
-        const outCanvas = cleanCanvasSync(srcCanvas);
+        const outCanvas = cleanCanvasSync(srcCanvas, dbnetMask);
         resolve(outCanvas);
       } catch (e) { reject(e); }
     }, 0);
@@ -575,7 +653,7 @@ function inpaintTiled(src, mask, dst, tileSize, radius) {
 }
 function overlap2(tileSize) { return Math.floor(tileSize * 0.15); }
 
-function cleanCanvasSync(srcCanvas) {
+function cleanCanvasSync(srcCanvas, dbnetMask) {
   const src = cv.imread(srcCanvas);
   const bgr = new cv.Mat();
   cv.cvtColor(src, bgr, cv.COLOR_RGBA2RGB);  // treat as RGB (=BGR for our purposes)
@@ -609,8 +687,9 @@ function cleanCanvasSync(srcCanvas) {
   let colored = cvMatOr(colored1, green);
   colored1.delete(); green.delete();
 
-  // 1b. black-pen mask via morphological opening. Opening with 5x5 kernel
-  // removes thin printed text; thick handwriting strokes survive.
+  // 1b. black-pen mask: ALL dark low-sat pixels (includes printed + handwriting).
+  //     The DBNet protectText (merged later) will subtract printed text from erase,
+  //     so only black handwriting remains to be erased.
   let blackPen = blackPenMask(bgr, Vm, Sm);
 
   // Combine colored + black-handwriting masks
@@ -624,6 +703,17 @@ function cleanCanvasSync(srcCanvas) {
   // 3. protect navy headers (dense high-sat horizontal text) — needs blue + Hm,Sm,Vm
   let protectText = protectNavyText(Hm, Sm, Vm, blue);
   blue.delete();
+
+  // 3b. Merge DBNet text mask (covers ALL printed text incl. black) into protectText.
+  //     This is the key addition: DBNet detects printed text regardless of color,
+  //     so black printed text is now protected, allowing black handwriting to be erased.
+  if (dbnetMask && !dbnetMask.isDeleted()) {
+    let merged = new cv.Mat();
+    cv.bitwise_or(protectText, dbnetMask, merged);
+    protectText.delete();
+    protectText = merged;
+    dbnetMask.delete();
+  }
 
   // 4. No protectBlackText — it cancels blackPenMask (both use opening).
   //    Instead, rely on inpainting to restore any printed text caught in the
@@ -977,7 +1067,8 @@ function blackPenInBlankSpaces(V, S) {
 // Detect black handwriting: dark low-saturation pixels with THICK strokes.
 // Uses morphological opening (cv.distanceTransform is broken in this OpenCV.js
 // build — returns garbage values). Opening with a small kernel removes thin
-// printed text strokes; what SURVIVES opening = thick handwriting strokes.
+// black-pen mask: ALL dark low-saturation pixels. With DBNet protecting
+// printed text, this catches all black handwriting (no opening needed).
 function blackPenMask(bgr, V, S) {
   // dark low-sat (black/dark gray ink): V<140 AND S<85
   let vBin = new cv.Mat(); cv.threshold(V, vBin, 139.5, 255, cv.THRESH_BINARY_INV);
@@ -985,19 +1076,11 @@ function blackPenMask(bgr, V, S) {
   let dark = new cv.Mat();
   cv.bitwise_and(vBin, sBin, dark);
   vBin.delete(); sBin.delete();
-
-  // Opening with 5x5 ellipse: thin printed text gets removed, thick
-  // handwriting (4px+ stroke) survives.
-  let k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5,5));
-  let opened = new cv.Mat();
-  cv.morphologyEx(dark, opened, cv.MORPH_OPEN, k);
-  // thick = what survives opening = handwriting
-  let thick = new cv.Mat();
-  cv.bitwise_and(dark, opened, thick);
-  // dilate to cover the full stroke
-  cv.dilate(thick, thick, k, new cv.Point(-1,-1), 2);
-  dark.delete(); opened.delete(); k.delete();
-  return thick;
+  // dilate slightly to cover anti-aliased edges
+  let k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(2,2));
+  cv.dilate(dark, dark, k, new cv.Point(-1,-1), 1);
+  k.delete();
+  return dark;
 }
 
 function protectBlackText(V, S) {
