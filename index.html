@@ -162,7 +162,7 @@
 <script async src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js" onload="onCvReady()"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/ort.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.0/dist/ort.min.js"></script>
 
 <header>
   <div class="logo">
@@ -329,8 +329,8 @@ async function getDbnetSession() {
   }
   dbnetLoading = true;
   try {
-    ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.1/dist/";
-    dbnetSession = await ort.InferenceSession.create("https://swiss97501-max.github.io/handwriting-eraser/models/det_v4.onnx");
+    ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.0/dist/";
+    dbnetSession = await ort.InferenceSession.create("https://swiss97501-max.github.io/handwriting-eraser/models/segformer_hw_final.onnx");
     console.log("DBNet loaded:", dbnetSession.inputNames, dbnetSession.outputNames);
   } catch (e) {
     console.error("DBNet load failed:", e);
@@ -339,48 +339,53 @@ async function getDbnetSession() {
   return dbnetSession;
 }
 
-// Run DBNet on a canvas, return a CV_8U text mask (255 = printed text, 0 = not).
+// Run SegFormer on a canvas, return a CV_8U text mask (255 = printed text, 0 = not).
+// SegFormer output: [1, 3, H, W] logits — class 0=background, 1=text, 2=handwriting
 async function dbnetTextMask(srcCanvas) {
   const session = await getDbnetSession();
   if (!session) return null;
-  // preprocess: resize to max 1536, pad to multiple of 32
-  const MAX_SIDE = 1536;
+  // SegFormer expects 512x512 input
+  const SIZE = 512;
   let h = srcCanvas.height, w = srcCanvas.width;
-  let ratio = Math.min(MAX_SIDE / h, MAX_SIDE / w, 1.5);
-  let nh = Math.round(h * ratio), nw = Math.round(w * ratio);
-  nh = Math.ceil(nh / 32) * 32;
-  nw = Math.ceil(nw / 32) * 32;
   const tmp = document.createElement("canvas");
-  tmp.width = nw; tmp.height = nh;
-  tmp.getContext("2d").drawImage(srcCanvas, 0, 0, nw, nh);
-  const imgData = tmp.getContext("2d").getImageData(0, 0, nw, nh);
-  const float32 = new Float32Array(3 * nh * nw);
+  tmp.width = SIZE; tmp.height = SIZE;
+  tmp.getContext("2d").drawImage(srcCanvas, 0, 0, SIZE, SIZE);
+  const imgData = tmp.getContext("2d").getImageData(0, 0, SIZE, SIZE);
+  const float32 = new Float32Array(3 * SIZE * SIZE);
   const mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225];
-  for (let i = 0; i < nh * nw; i++) {
-    float32[0 * nh * nw + i] = (imgData.data[i*4]/255 - mean[0]) / std[0];
-    float32[1 * nh * nw + i] = (imgData.data[i*4+1]/255 - mean[1]) / std[1];
-    float32[2 * nh * nw + i] = (imgData.data[i*4+2]/255 - mean[2]) / std[2];
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    float32[0 * SIZE * SIZE + i] = (imgData.data[i*4]/255 - mean[0]) / std[0];
+    float32[1 * SIZE * SIZE + i] = (imgData.data[i*4+1]/255 - mean[1]) / std[1];
+    float32[2 * SIZE * SIZE + i] = (imgData.data[i*4+2]/255 - mean[2]) / std[2];
   }
-  const tensor = new ort.Tensor("float32", float32, [1, 3, nh, nw]);
+  const tensor = new ort.Tensor("float32", float32, [1, 3, SIZE, SIZE]);
   const feeds = {}; feeds[session.inputNames[0]] = tensor;
   const results = await session.run(feeds);
   const out = results[session.outputNames[0]];
   const dims = out.dims;
   const oh = dims[dims.length - 2], ow = dims[dims.length - 1];
-  // build CV_8U mask at original resolution
+  const nClasses = dims[1];
+  // build CV_8U text mask at original resolution
+  // class 1 = text → protect; class 2 = handwriting → don't protect
   const textMask = cv.Mat.zeros(h, w, cv.CV_8U);
-  const sx = w / ow, sy = h / oh;
-  // write to a plain array then copy into Mat via data setter
   const arr = new Uint8Array(h * w);
+  const sx = w / ow, sy = h / oh;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const oy = Math.min(oh - 1, Math.floor(y / sy));
       const ox = Math.min(ow - 1, Math.floor(x / sx));
-      if (out.data[oy * ow + ox] > 0.1) arr[y * w + x] = 255;
+      // argmax over classes
+      let maxVal = -1e9, maxClass = 0;
+      for (let c = 0; c < nClasses; c++) {
+        const v = out.data[c * oh * ow + oy * ow + ox];
+        if (v > maxVal) { maxVal = v; maxClass = c; }
+      }
+      // class 1 = text → protect (255); class 0,2 = background/handwriting → erase (0)
+      if (maxClass === 1) arr[y * w + x] = 255;
     }
   }
   textMask.data.set(arr);
-  // dilate to cover glyph edges (moderate radius — too large covers nearby handwriting)
+  // dilate to cover glyph edges
   const k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(7, 7));
   cv.dilate(textMask, textMask, k, new cv.Point(-1, -1), 1);
   k.delete();
