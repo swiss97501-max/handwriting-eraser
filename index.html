@@ -634,10 +634,10 @@ function cleanCanvasSync(srcCanvas) {
   erase.setTo(new cv.Scalar(0), protectBlack);
   protectFill.delete(); protectText.delete(); protectBlack.delete();
 
-  // dilate, blur, threshold
+  // dilate (small), blur, threshold
   let k3 = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3,3));
-  cv.dilate(erase, erase, k3, new cv.Point(-1,-1), 4);
-  cv.GaussianBlur(erase, erase, new cv.Size(0,0), 0.9);
+  cv.dilate(erase, erase, k3, new cv.Point(-1,-1), 2);
+  cv.GaussianBlur(erase, erase, new cv.Size(0,0), 0.7);
   let eraseBin = new cv.Mat();
   cv.threshold(erase, eraseBin, 128, 255, cv.THRESH_BINARY);
   erase.delete(); k3.delete();
