@@ -676,11 +676,16 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
   let green = greenMask(Hm, Sm, Vm);
   Bm.delete(); Gm.delete(); Rm.delete(); bgrChans.delete(); chans.delete();
 
-  // 1a. protect ALL red pixels as printed (red headers, borders, graphs).
-  // The CC-based classification misses thin/small red text at low render scale,
-  // so we protect all red and rely on the fact that red handwriting is rare
-  // and minor compared to losing printed red elements (graphs, headers).
-  let protectRed = red.clone();
+  // 1a. Don't protect ALL red — that prevents red handwriting from being erased.
+  // Instead, rely on DBNet text mask (merged into protectText later) to protect
+  // printed red text/headers/graphs. Red handwriting (circles, strikethroughs)
+  // is NOT detected by DBNet as text, so it will be erased.
+  // Only protect red if DBNet is not available (fallback).
+  let protectRed = null;
+  if (!dbnetMask || dbnetMask.isDeleted()) {
+    // Fallback: protect all red when DBNet is not available
+    protectRed = red.clone();
+  }
 
   let colored1 = cvMatOr(blue, red);
   red.delete();
@@ -727,10 +732,10 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
   raw.delete();
   erase.setTo(new cv.Scalar(0), protectFill);
   erase.setTo(new cv.Scalar(0), protectText);
-  erase.setTo(new cv.Scalar(0), protectRed);
+  if (protectRed) erase.setTo(new cv.Scalar(0), protectRed);
   protectFill.delete();
-  // keep protectText and protectRed — re-subtract after dilation to prevent
-  // erase bleed into protected blue/red text areas.
+  // keep protectText (and protectRed if set) — re-subtract after dilation to
+  // prevent erase bleed into protected text areas.
 
   // dilate (small), blur, threshold — only for COLORED pen (to be inpainted)
   let k3 = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3,3));
@@ -741,15 +746,19 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
   let eraseColoredBin = new cv.Mat();
   cv.threshold(eraseColored, eraseColoredBin, 128, 255, cv.THRESH_BINARY);
   eraseColored.delete();
-  // re-subtract dilated protectRed AND protectText so dilation bleed doesn't
-  // touch printed red/blue elements
-  let protRedDil = new cv.Mat();
-  cv.dilate(protectRed, protRedDil, k3, new cv.Point(-1,-1), 3);
+  // re-subtract dilated protectText (and protectRed if set) so dilation bleed
+  // doesn't touch printed text elements
   let protTextDil = new cv.Mat();
   cv.dilate(protectText, protTextDil, k3, new cv.Point(-1,-1), 3);
-  let protCombined = new cv.Mat();
-  cv.bitwise_or(protRedDil, protTextDil, protCombined);
-  protRedDil.delete(); protTextDil.delete();
+  let protCombined = protTextDil;
+  if (protectRed) {
+    let protRedDil = new cv.Mat();
+    cv.dilate(protectRed, protRedDil, k3, new cv.Point(-1,-1), 3);
+    let combined = new cv.Mat();
+    cv.bitwise_or(protTextDil, protRedDil, combined);
+    protTextDil.delete(); protRedDil.delete();
+    protCombined = combined;
+  }
   let notProt = new cv.Mat();
   cv.bitwise_not(protCombined, notProt);
   cv.bitwise_and(eraseColoredBin, notProt, eraseColoredBin);
@@ -763,7 +772,9 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
   cv.threshold(eraseBlack, eraseBlackBin, 128, 255, cv.THRESH_BINARY);
   eraseBlack.delete();
   erase.delete(); k3.delete();
-  colored.delete(); blackPen.delete(); protectRed.delete(); protectText.delete();
+  colored.delete(); blackPen.delete();
+  if (protectRed) protectRed.delete();
+  protectText.delete();
 
   // 6a. Inpaint colored pen areas (restores printed text under colored ink).
   //     Skip inpainting entirely if the colored mask is empty (e.g. all-black ink).
