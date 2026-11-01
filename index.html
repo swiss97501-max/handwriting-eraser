@@ -592,7 +592,7 @@ function cleanCanvasSync(srcCanvas) {
   cv.split(bgr, bgrChans);
   const Bm = bgrChans.get(0), Gm = bgrChans.get(1), Rm = bgrChans.get(2);
 
-  // 1. pen mask: colored pen (blue + red)
+  // 1. pen mask: colored pen (blue + red + green)
   let blue = blueMask(Hm, Sm, Vm);
   let red = redMask(Hm, Sm, Vm, Rm, Gm, Bm);
   let green = greenMask(Hm, Sm, Vm);
@@ -603,14 +603,14 @@ function cleanCanvasSync(srcCanvas) {
   let colored = cvMatOr(colored1, green);
   colored1.delete(); green.delete();
 
-  // 1b. black-pen mask via stroke thickness (distance transform).
-  // Printed text has thin strokes (~1px); black handwriting has thicker strokes
-  // (~3px+). Pixels deep inside a thick stroke = black handwriting.
+  // 1b. black-pen mask via morphological opening. Opening with 5x5 kernel
+  // removes thin printed text; thick handwriting strokes survive.
   let blackPen = blackPenMask(bgr, Vm, Sm);
 
   // Combine colored + black-handwriting masks
   let raw = cvMatOr(colored, blackPen);
-  colored.delete(); blackPen.delete();
+  // keep colored and blackPen for later use (separate erase paths)
+  // raw is used below for protectFills and erase
 
   // 2. protect solid fills via distance transform
   let protectFill = protectFills(raw);
@@ -619,35 +619,53 @@ function cleanCanvasSync(srcCanvas) {
   let protectText = protectNavyText(Hm, Sm, Vm, blue);
   blue.delete();
 
-  // 4. protect black PRINTED text (thin dark strokes, V<130, S<80) from dilation
-  //    bleed — but only the THIN ones (handwriting is thick, already in raw).
-  let protectBlack = protectBlackText(Vm, Sm);
+  // 4. No protectBlackText — it cancels blackPenMask (both use opening).
+  //    Instead, rely on inpainting to restore any printed text caught in the
+  //    erase mask. The inpaintTiled step reconstructs from neighboring pixels.
   Hm.delete(); Sm.delete(); Vm.delete();
 
-  // 5. erase = raw minus protections
+  // 5. erase = raw minus protections (fill + text only)
   let erase = new cv.Mat(raw.rows, raw.cols, raw.type());
   erase.setTo(new cv.Scalar(0, 0, 0, 0));
   raw.copyTo(erase);
   raw.delete();
   erase.setTo(new cv.Scalar(0), protectFill);
   erase.setTo(new cv.Scalar(0), protectText);
-  erase.setTo(new cv.Scalar(0), protectBlack);
-  protectFill.delete(); protectText.delete(); protectBlack.delete();
+  protectFill.delete(); protectText.delete();
 
-  // dilate (small), blur, threshold
+  // dilate (small), blur, threshold — only for COLORED pen (to be inpainted)
   let k3 = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3,3));
-  cv.dilate(erase, erase, k3, new cv.Point(-1,-1), 2);
-  cv.GaussianBlur(erase, erase, new cv.Size(0,0), 0.7);
-  let eraseBin = new cv.Mat();
-  cv.threshold(erase, eraseBin, 128, 255, cv.THRESH_BINARY);
-  erase.delete(); k3.delete();
+  let eraseColored = new cv.Mat();
+  cv.bitwise_and(erase, colored, eraseColored);
+  cv.dilate(eraseColored, eraseColored, k3, new cv.Point(-1,-1), 2);
+  cv.GaussianBlur(eraseColored, eraseColored, new cv.Size(0,0), 0.7);
+  let eraseColoredBin = new cv.Mat();
+  cv.threshold(eraseColored, eraseColoredBin, 128, 255, cv.THRESH_BINARY);
+  eraseColored.delete();
 
-  // 6. Inpaint — restores printed content where pen covered it. cv.inpaint in
-  // this OpenCV.js build crashes on large images, so process in tiles (320px)
-  // with radius 5 (larger radius re-introduces handwriting artifacts).
+  // black pen mask: white-fill directly (handwriting is in blank spaces,
+  // no need to inpaint/restore). NO dilation to protect text band edges.
+  let eraseBlack = new cv.Mat();
+  cv.bitwise_and(erase, blackPen, eraseBlack);
+  let eraseBlackBin = new cv.Mat();
+  cv.threshold(eraseBlack, eraseBlackBin, 128, 255, cv.THRESH_BINARY);
+  eraseBlack.delete();
+  erase.delete(); k3.delete();
+  colored.delete(); blackPen.delete();
+
+  // 6a. Inpaint colored pen areas (restores printed text under colored ink).
+  //     Skip inpainting entirely if the colored mask is empty (e.g. all-black ink).
   let res = new cv.Mat();
-  inpaintTiled(bgr, eraseBin, res, 320, 5);
-  bgr.delete(); eraseBin.delete();
+  if (cv.countNonZero(eraseColoredBin) > 0) {
+    inpaintTiled(bgr, eraseColoredBin, res, 320, 5);
+  } else {
+    bgr.copyTo(res);
+  }
+  bgr.delete(); eraseColoredBin.delete();
+
+  // 6b. White-fill black pen areas (handwriting in blank spaces)
+  res.setTo(new cv.Scalar(255, 255, 255), eraseBlackBin);
+  eraseBlackBin.delete();
 
   // convert back to RGBA for output canvas
   const out = new cv.Mat();
@@ -816,9 +834,69 @@ function protectNavyText(H, S, V, blue) {
   return seed;
 }
 
-// Detect black handwriting: dark low-saturation pixels with THICK strokes
-// (distance transform > threshold). Printed text has thin strokes (~1px);
-// black pen handwriting is thicker (~2.5px+). Returns a CV_8U mask.
+// Detect black handwriting in blank spaces: dark ink that falls OUTSIDE
+// printed text-line bands. Uses horizontal projection profile to find text
+// rows (rows with many dark pixels = printed text), marks those bands as
+// "printed text zone", and returns dark ink OUTSIDE that zone as handwriting.
+function blackPenInBlankSpaces(V, S) {
+  // dark low-sat (black/dark gray ink): V<140 AND S<85
+  let vBin = new cv.Mat(); cv.threshold(V, vBin, 139.5, 255, cv.THRESH_BINARY_INV);
+  let sBin = new cv.Mat(); cv.threshold(S, sBin, 84.5, 255, cv.THRESH_BINARY_INV);
+  let dark = new cv.Mat();
+  cv.bitwise_and(vBin, sBin, dark);
+  vBin.delete(); sBin.delete();
+
+  const H = dark.rows, W = dark.cols;
+  // horizontal projection: count dark pixels per row (manual loop, cv.reduce
+  // hangs in this OpenCV.js build)
+  const darkArr = new Uint8Array(dark.data);
+  const proj = new Int32Array(H);
+  for (let y = 0; y < H; y++) {
+    let cnt = 0;
+    const off = y * W;
+    for (let x = 0; x < W; x++) cnt += darkArr[off + x] > 0 ? 1 : 0;
+    proj[y] = cnt;
+  }
+
+  // classify rows: "text row" if dark count > threshold. Lower threshold (5%)
+  // catches most printed text including short lines and page numbers.
+  const thr = W * 0.05;  // at least 5% of width has dark pixels = text line
+  const textBand = new Uint8Array(H);
+  for (let y = 0; y < H; y++) {
+    if (proj[y] > thr) textBand[y] = 1;
+  }
+  // expand text bands vertically (cover glyph height + line spacing)
+  const expand = 15;
+  const expanded = new Uint8Array(H);
+  for (let y = 0; y < H; y++) {
+    if (textBand[y]) {
+      const lo = Math.max(0, y - expand);
+      const hi = Math.min(H - 1, y + expand);
+      for (let yy = lo; yy <= hi; yy++) expanded[yy] = 1;
+    }
+  }
+  // build text-band mask using cv.rectangle (direct pixel writes don't work
+  // reliably in this OpenCV.js build)
+  const bandMask = cv.Mat.zeros(H, W, cv.CV_8U);
+  for (let y = 0; y < H; y++) {
+    if (expanded[y]) {
+      cv.rectangle(bandMask, new cv.Point(0, y), new cv.Point(W - 1, y), new cv.Scalar(255), -1);
+    }
+  }
+  // dark ink OUTSIDE text bands = handwriting candidate
+  let notBand = new cv.Mat();
+  cv.bitwise_not(bandMask, notBand);
+  let blackPen = new cv.Mat();
+  cv.bitwise_and(dark, notBand, blackPen);
+  // NO dilation — avoid eating into text band edges
+  dark.delete(); bandMask.delete(); notBand.delete();
+  return blackPen;
+}
+
+// Detect black handwriting: dark low-saturation pixels with THICK strokes.
+// Uses morphological opening (cv.distanceTransform is broken in this OpenCV.js
+// build — returns garbage values). Opening with a small kernel removes thin
+// printed text strokes; what SURVIVES opening = thick handwriting strokes.
 function blackPenMask(bgr, V, S) {
   // dark low-sat (black/dark gray ink): V<140 AND S<85
   let vBin = new cv.Mat(); cv.threshold(V, vBin, 139.5, 255, cv.THRESH_BINARY_INV);
@@ -827,55 +905,42 @@ function blackPenMask(bgr, V, S) {
   cv.bitwise_and(vBin, sBin, dark);
   vBin.delete(); sBin.delete();
 
-  // distance transform needs binary 0/1 input (not 0/255), so normalize.
-  let dark01 = new cv.Mat();
-  dark.convertTo(dark01, cv.CV_8U, 1.0 / 255.0);
-  let dt = new cv.Mat();
-  cv.distanceTransform(dark01, dt, cv.DIST_L2, 3);
-  dark01.delete();
-
-  // thick stroke = dt > 1.5 (stroke diameter > 3px) — printed text stays ~1px
-  let thickTmp = new cv.Mat();
-  cv.threshold(dt, thickTmp, 1.5, 255, cv.THRESH_BINARY);
-  let thick = new cv.Mat(); thickTmp.convertTo(thick, cv.CV_8U);
-  thickTmp.delete();
-  dt.delete();
-  // dilate to cover the full stroke (not just the core)
-  let k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(4,4));
+  // Opening with 5x5 ellipse: thin printed text gets removed, thick
+  // handwriting (4px+ stroke) survives.
+  let k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5,5));
+  let opened = new cv.Mat();
+  cv.morphologyEx(dark, opened, cv.MORPH_OPEN, k);
+  // thick = what survives opening = handwriting
+  let thick = new cv.Mat();
+  cv.bitwise_and(dark, opened, thick);
+  // dilate to cover the full stroke
   cv.dilate(thick, thick, k, new cv.Point(-1,-1), 2);
-  // intersect with dark mask (only dark thick strokes)
-  let blackPen = new cv.Mat();
-  cv.bitwise_and(dark, thick, blackPen);
-  dark.delete(); thick.delete(); k.delete();
-  return blackPen;
+  dark.delete(); opened.delete(); k.delete();
+  return thick;
 }
 
 function protectBlackText(V, S) {
-  // Protect thin dark printed text: V<140, S<85, AND thin stroke (dt <= 1.5).
-  // Black handwriting (thick) is NOT protected here so it can be erased.
+  // Protect thin dark printed text: V<140, S<85, AND thin stroke.
+  // Thin = what gets REMOVED by opening (printed text). Thick (handwriting)
+  // is NOT protected so it can be erased.
   let vBin = new cv.Mat(); cv.threshold(V, vBin, 139.5, 255, cv.THRESH_BINARY_INV);
   let sBin = new cv.Mat(); cv.threshold(S, sBin, 84.5, 255, cv.THRESH_BINARY_INV);
   let dark = new cv.Mat();
   cv.bitwise_and(vBin, sBin, dark);
   vBin.delete(); sBin.delete();
 
-  let dark01 = new cv.Mat();
-  dark.convertTo(dark01, cv.CV_8U, 1.0 / 255.0);
-  let dt = new cv.Mat();
-  cv.distanceTransform(dark01, dt, cv.DIST_L2, 3);
-  dark01.delete();
-  let thinTmp = new cv.Mat();
-  cv.threshold(dt, thinTmp, 1.5, 255, cv.THRESH_BINARY_INV);
-  let thin = new cv.Mat(); thinTmp.convertTo(thin, cv.CV_8U);
-  thinTmp.delete();
-  dt.delete();
-  let black = new cv.Mat();
-  cv.bitwise_and(dark, thin, black);
-  dark.delete(); thin.delete();
-  let k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3,3));
-  cv.dilate(black, black, k, new cv.Point(-1,-1), 2);
+  // Opening removes thin strokes; what's removed = printed text
+  let k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(4,4));
+  let opened = new cv.Mat();
+  cv.morphologyEx(dark, opened, cv.MORPH_OPEN, k);
+  // thin = dark - opened (what was removed by opening = printed text)
+  let thin = new cv.Mat();
+  cv.subtract(dark, opened, thin);
+  dark.delete(); opened.delete();
+  // small dilation only (1 iter) to protect edges without covering handwriting
+  cv.dilate(thin, thin, k, new cv.Point(-1,-1), 1);
   k.delete();
-  return black;
+  return thin;
 }
 
 // ============ Compare slider drag ============
