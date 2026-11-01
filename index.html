@@ -776,17 +776,13 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
   if (protectRed) protectRed.delete();
   protectText.delete();
 
-  // 6a. Inpaint colored pen areas (restores printed text under colored ink).
-  //     Skip inpainting entirely if the colored mask is empty (e.g. all-black ink).
-  let res = new cv.Mat();
-  if (cv.countNonZero(eraseColoredBin) > 0) {
-    inpaintTiled(bgr, eraseColoredBin, res, 320, 5);
-  } else {
-    bgr.copyTo(res);
-  }
-  bgr.delete(); eraseColoredBin.delete();
-
-  // 6b. White-fill black pen areas (handwriting in blank spaces)
+  // 6. White-fill ALL erase areas (colored + black pen). Inpainting creates
+  //     brownish artifacts from neighboring pixels; white fill is cleaner since
+  //     DBNet protectText already guards printed text underneath.
+  let res = bgr.clone();
+  bgr.delete();
+  res.setTo(new cv.Scalar(255, 255, 255), eraseColoredBin);
+  eraseColoredBin.delete();
   res.setTo(new cv.Scalar(255, 255, 255), eraseBlackBin);
   eraseBlackBin.delete();
 
