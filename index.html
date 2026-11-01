@@ -598,9 +598,11 @@ function cleanCanvasSync(srcCanvas) {
   let green = greenMask(Hm, Sm, Vm);
   Bm.delete(); Gm.delete(); Rm.delete(); bgrChans.delete(); chans.delete();
 
-  // 1a. protect PRINTED red elements (headers, box borders, graph lines) so
-  // they aren't erased as red handwriting. Must be done before combining.
-  let protectRed = protectRedPrinted(red);
+  // 1a. protect ALL red pixels as printed (red headers, borders, graphs).
+  // The CC-based classification misses thin/small red text at low render scale,
+  // so we protect all red and rely on the fact that red handwriting is rare
+  // and minor compared to losing printed red elements (graphs, headers).
+  let protectRed = red.clone();
 
   let colored1 = cvMatOr(blue, red);
   red.delete();
