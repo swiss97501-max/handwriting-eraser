@@ -598,6 +598,10 @@ function cleanCanvasSync(srcCanvas) {
   let green = greenMask(Hm, Sm, Vm);
   Bm.delete(); Gm.delete(); Rm.delete(); bgrChans.delete(); chans.delete();
 
+  // 1a. protect PRINTED red elements (headers, box borders, graph lines) so
+  // they aren't erased as red handwriting. Must be done before combining.
+  let protectRed = protectRedPrinted(red);
+
   let colored1 = cvMatOr(blue, red);
   red.delete();
   let colored = cvMatOr(colored1, green);
@@ -624,14 +628,17 @@ function cleanCanvasSync(srcCanvas) {
   //    erase mask. The inpaintTiled step reconstructs from neighboring pixels.
   Hm.delete(); Sm.delete(); Vm.delete();
 
-  // 5. erase = raw minus protections (fill + text only)
+  // 5. erase = raw minus protections (fill + text + red-printed)
   let erase = new cv.Mat(raw.rows, raw.cols, raw.type());
   erase.setTo(new cv.Scalar(0, 0, 0, 0));
   raw.copyTo(erase);
   raw.delete();
   erase.setTo(new cv.Scalar(0), protectFill);
   erase.setTo(new cv.Scalar(0), protectText);
+  erase.setTo(new cv.Scalar(0), protectRed);
   protectFill.delete(); protectText.delete();
+  // keep protectRed — re-subtract after dilation to prevent erase bleed into
+  // protected red borders/headers.
 
   // dilate (small), blur, threshold — only for COLORED pen (to be inpainted)
   let k3 = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3,3));
@@ -642,6 +649,13 @@ function cleanCanvasSync(srcCanvas) {
   let eraseColoredBin = new cv.Mat();
   cv.threshold(eraseColored, eraseColoredBin, 128, 255, cv.THRESH_BINARY);
   eraseColored.delete();
+  // re-subtract dilated protectRed so dilation bleed doesn't touch printed red
+  let protRedDil = new cv.Mat();
+  cv.dilate(protectRed, protRedDil, k3, new cv.Point(-1,-1), 3);
+  let notProt = new cv.Mat();
+  cv.bitwise_not(protRedDil, notProt);
+  cv.bitwise_and(eraseColoredBin, notProt, eraseColoredBin);
+  notProt.delete(); protRedDil.delete();
 
   // black pen mask: white-fill directly (handwriting is in blank spaces,
   // no need to inpaint/restore). NO dilation to protect text band edges.
@@ -651,7 +665,7 @@ function cleanCanvasSync(srcCanvas) {
   cv.threshold(eraseBlack, eraseBlackBin, 128, 255, cv.THRESH_BINARY);
   eraseBlack.delete();
   erase.delete(); k3.delete();
-  colored.delete(); blackPen.delete();
+  colored.delete(); blackPen.delete(); protectRed.delete();
 
   // 6a. Inpaint colored pen areas (restores printed text under colored ink).
   //     Skip inpainting entirely if the colored mask is empty (e.g. all-black ink).
@@ -768,6 +782,66 @@ function greenMask(H, S, V) {
   cv.bitwise_and(b, m4, dst);
   m1.delete(); m2.delete(); m3.delete(); m4.delete(); a.delete(); b.delete();
   return dst;
+}
+
+// Protect PRINTED red elements: red text headers, red box borders, red graph
+// lines. Distinguishes from handwritten red (circles, scribbles, strikethroughs)
+// by connected-component shape on the RAW red mask (no closing, so scattered
+// handwriting stays as small components):
+//   - Printed red TEXT headers -> dense horizontal bars (high fill density)
+//   - Printed red LINES/borders/graphs -> long continuous strokes (large bbox + area)
+//   - Handwritten red -> short, scattered, small components
+function protectRedPrinted(red) {
+  // For text-header detection, close gaps within red text lines.
+  let kh = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(31, 1));
+  let kv = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(1, 7));
+  let closed = new cv.Mat();
+  cv.morphologyEx(red, closed, cv.MORPH_CLOSE, kh);
+  cv.morphologyEx(closed, closed, cv.MORPH_CLOSE, kv);
+
+  // CC on closed mask (to detect dense text bars)
+  let labels = new cv.Mat(); let stats = new cv.Mat(); let cents = new cv.Mat();
+  let n = cv.connectedComponentsWithStats(closed, labels, stats, cents, 8, cv.CV_32S);
+  let seed = cv.Mat.zeros(red.rows, red.cols, cv.CV_8U);
+
+  for (let i = 1; i < n; i++) {
+    let x = stats.intAt(i, cv.CC_STAT_LEFT);
+    let y = stats.intAt(i, cv.CC_STAT_TOP);
+    let w = stats.intAt(i, cv.CC_STAT_WIDTH);
+    let h = stats.intAt(i, cv.CC_STAT_HEIGHT);
+    let area = stats.intAt(i, cv.CC_STAT_AREA);
+
+    // count red pixels in bbox (use closed for density)
+    let roi = closed.roi(new cv.Rect(x, y, w, h));
+    let nz = cv.countNonZero(roi);
+    roi.delete();
+    let dens = nz / (w * h);
+
+    // Classify as PRINTED (protect) if:
+    //  (a) horizontal text bar (red text header): width >= 40, height >= 6, density >= 0.04
+    //  (b) long CONTINUOUS line/border/graph: bbox span >= 60px AND area >= 80
+    //      (area threshold filters out tiny red dots/scribbles)
+    let isHeaderText = (w >= 40 && h >= 6 && dens >= 0.04);
+    let isLongLine = ((w >= 60 || h >= 60) && area >= 80);
+
+    if (isHeaderText || isLongLine) {
+      let eqMat = new cv.Mat(labels.rows, labels.cols, labels.type(), new cv.Scalar(i));
+      cv.compare(labels, eqMat, eqMat, cv.CMP_EQ);
+      seed.setTo(new cv.Scalar(255), eqMat);
+      eqMat.delete();
+    }
+  }
+  // Intersect with original red mask so we only protect actual red pixels
+  // (not the dilated/closed extensions), then dilate slightly to cover edges.
+  let prot = new cv.Mat();
+  cv.bitwise_and(seed, red, prot);
+  seed.delete();
+  let kd = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3, 3));
+  cv.dilate(prot, prot, kd, new cv.Point(-1,-1), 1);
+
+  kh.delete(); kv.delete(); closed.delete();
+  labels.delete(); stats.delete(); cents.delete(); kd.delete();
+  return prot;
 }
 
 function protectFills(raw) {
