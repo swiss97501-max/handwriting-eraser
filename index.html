@@ -643,9 +643,10 @@ function cleanCanvasSync(srcCanvas) {
   erase.delete(); k3.delete();
 
   // 6. Inpaint — restores printed content where pen covered it. cv.inpaint in
-  // this OpenCV.js build crashes on large images, so process in tiles (256px).
+  // this OpenCV.js build crashes on large images, so process in tiles (320px)
+  // with radius 5 (larger radius re-introduces handwriting artifacts).
   let res = new cv.Mat();
-  inpaintTiled(bgr, eraseBin, res, 256, 5);
+  inpaintTiled(bgr, eraseBin, res, 320, 5);
   bgr.delete(); eraseBin.delete();
 
   // convert back to RGBA for output canvas
