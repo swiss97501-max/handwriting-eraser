@@ -947,10 +947,10 @@ function lt(m, val) { // m < val
 }
 
 function blueMask(H, S, V) {
-  // Wider range: H 80-135, S>=15 (catches low-sat blue test cases)
-  let m1 = ge(H, 80);
-  let m2 = le(H, 135);
-  let m3 = ge(S, 15);
+  // Very wide range: H 75-140, S>=5 (catches even faint anti-aliased blue edges)
+  let m1 = ge(H, 75);
+  let m2 = le(H, 140);
+  let m3 = ge(S, 5);
   let m4 = le(V, 250);
   let a = new cv.Mat(), b = new cv.Mat(), dst = new cv.Mat();
   cv.bitwise_and(m1, m2, a);
