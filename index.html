@@ -554,13 +554,22 @@ function cleanCanvasSync(srcCanvas) {
   cv.split(bgr, bgrChans);
   const Bm = bgrChans.get(0), Gm = bgrChans.get(1), Rm = bgrChans.get(2);
 
-  // 1. pen mask: blue + red
+  // 1. pen mask: colored pen (blue + red)
   let blue = blueMask(Hm, Sm, Vm);
   let red = redMask(Hm, Sm, Vm, Rm, Gm, Bm);
   Bm.delete(); Gm.delete(); Rm.delete(); bgrChans.delete(); chans.delete();
 
-  let raw = cvMatOr(blue, red);
+  let colored = cvMatOr(blue, red);
   red.delete();
+
+  // 1b. black-pen mask via stroke thickness (distance transform).
+  // Printed text has thin strokes (~1px); black handwriting has thicker strokes
+  // (~3px+). Pixels deep inside a thick stroke = black handwriting.
+  let blackPen = blackPenMask(bgr, Vm, Sm);
+
+  // Combine colored + black-handwriting masks
+  let raw = cvMatOr(colored, blackPen);
+  colored.delete(); blackPen.delete();
 
   // 2. protect solid fills via distance transform
   let protectFill = protectFills(raw);
@@ -569,7 +578,8 @@ function cleanCanvasSync(srcCanvas) {
   let protectText = protectNavyText(Hm, Sm, Vm, blue);
   blue.delete();
 
-  // 4. protect black text: V<130, S<80 — needs Vm, Sm
+  // 4. protect black PRINTED text (thin dark strokes, V<130, S<80) from dilation
+  //    bleed — but only the THIN ones (handwriting is thick, already in raw).
   let protectBlack = protectBlackText(Vm, Sm);
   Hm.delete(); Sm.delete(); Vm.delete();
 
@@ -748,15 +758,52 @@ function protectNavyText(H, S, V, blue) {
   return seed;
 }
 
+// Detect black handwriting: dark low-saturation pixels with THICK strokes
+// (distance transform > threshold). Printed text has thin strokes (~1px);
+// black pen handwriting is thicker (~2.5px+). Returns a CV_8U mask.
+function blackPenMask(bgr, V, S) {
+  // dark low-sat (black/dark gray ink)
+  let vOk = lt(V, 140);
+  let sOk = lt(S, 85);
+  let dark = new cv.Mat();
+  cv.bitwise_and(vOk, sOk, dark);
+  vOk.delete(); sOk.delete();
+
+  // distance transform on dark ink -> stroke thickness map
+  let dt = new cv.Mat(dark.rows, dark.cols, cv.CV_32F);
+  cv.distanceTransform(dark, dt, cv.DIST_L2, 3);
+  // thick stroke = dt > 1.5 (stroke diameter > 3px) — printed text stays ~1px
+  let thick = gt(dt, 1.5);
+  dt.delete();
+  // dilate to cover the full stroke (not just the core)
+  let k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(4,4));
+  cv.dilate(thick, thick, k, new cv.Point(-1,-1), 2);
+  // intersect with dark mask (only dark thick strokes)
+  let blackPen = new cv.Mat();
+  cv.bitwise_and(dark, thick, blackPen);
+  dark.delete(); thick.delete(); k.delete();
+  return blackPen;
+}
+
 function protectBlackText(V, S) {
-  // V<130, S<80
-  let vOk = lt(V, 130);
-  let sOk = lt(S, 80);
+  // Protect thin dark printed text: V<140, S<85, AND thin stroke (dt <= 1.5).
+  // Black handwriting (thick) is NOT protected here so it can be erased.
+  let vOk = lt(V, 140);
+  let sOk = lt(S, 85);
+  let dark = new cv.Mat();
+  cv.bitwise_and(vOk, sOk, dark);
+  vOk.delete(); sOk.delete();
+
+  let dt = new cv.Mat(dark.rows, dark.cols, cv.CV_32F);
+  cv.distanceTransform(dark, dt, cv.DIST_L2, 3);
+  let thin = le(dt, 1.5);  // thin strokes only
+  dt.delete();
   let black = new cv.Mat();
-  cv.bitwise_and(vOk, sOk, black);
+  cv.bitwise_and(dark, thin, black);
+  dark.delete(); thin.delete();
   let k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3,3));
   cv.dilate(black, black, k, new cv.Point(-1,-1), 2);
-  vOk.delete(); sOk.delete(); k.delete();
+  k.delete();
   return black;
 }
 
