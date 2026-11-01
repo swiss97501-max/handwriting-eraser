@@ -878,9 +878,9 @@ function cleanCanvasSync(srcCanvas, segResult) {
     finalErase.delete();
     finalErase = combined;
   }
-  // Dilate final erase to cover anti-aliased edges
-  let kd = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5, 5));
-  cv.dilate(finalErase, finalErase, kd, new cv.Point(-1, -1), 2);
+  // Dilate final erase to cover anti-aliased edges of handwriting strokes
+  let kd = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(7, 7));
+  cv.dilate(finalErase, finalErase, kd, new cv.Point(-1, -1), 3);
   kd.delete();
   // Re-subtract protectText one more time to be safe
   let protFinal = new cv.Mat();
