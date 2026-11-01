@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="th" translate="no">
+<html lang="en" translate="no">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
 <meta name="google" content="notranslate">
-<meta http-equiv="Content-Language" content="th">
-<title>Handwriting Eraser — ลบลายมือจากข้อสอบ</title>
+<meta http-equiv="Content-Language" content="en">
+<title>Handwriting Eraser</title>
 <style>
   :root {
     --bg: #ffffff;
@@ -160,43 +160,6 @@
 </head>
 <body class="notranslate">
 
-<!-- Anti-tamper: protect critical text from extensions that rewrite content -->
-<script>
-(function(){
-  // Store original text of key elements
-  var orig = {};
-  function snap(){
-    document.querySelectorAll('[data-orig]').forEach(function(el){
-      orig[el.dataset.orig] = el.textContent;
-    });
-  }
-  function check(){
-    document.querySelectorAll('[data-orig]').forEach(function(el){
-      if(el.textContent !== orig[el.dataset.orig]){
-        el.textContent = orig[el.dataset.orig];
-      }
-    });
-  }
-  // Run after DOM loads
-  if(document.readyState==='loading'){
-    document.addEventListener('DOMContentLoaded', function(){ snap(); setInterval(check, 500); });
-  } else {
-    snap(); setInterval(check, 500);
-  }
-  // Also use MutationObserver to catch changes
-  var mo = new MutationObserver(function(){
-    document.querySelectorAll('[data-orig]').forEach(function(el){
-      if(el.textContent !== orig[el.dataset.orig]){
-        el.textContent = orig[el.dataset.orig];
-      }
-    });
-  });
-  document.addEventListener('DOMContentLoaded', function(){
-    mo.observe(document.body, {childList:true, subtree:true, characterData:true});
-  });
-})();
-</script>
-
 <!-- OpenCV.js, pdf.js, jsPDF, ONNX Runtime Web loaded from CDN -->
 <script async src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js" onload="onCvReady()"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -213,12 +176,12 @@
   </div>
   <div>
     <h1>Handwriting Eraser</h1>
-    <span class="sub" data-orig="subtitle">ลบลายมือจากข้อสอบ — ทำงานในเบราว์เซอร์</span>
+    <span class="sub">Erase handwriting from exam PDFs — runs in your browser</span>
   </div>
   <div class="spacer"></div>
   <button id="newBtn" class="btn outline sm hidden" onclick="resetAll()">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-    ใหม่
+    New
   </button>
 </header>
 
@@ -228,21 +191,21 @@
     <div class="hero">
       <span class="badge">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M3 12h18"/></svg>
-        ทำงานในเบราว์เซอร์ 100% · ไม่ส่งไฟล์ไป server
+        100% in-browser · No file uploaded to a server
       </span>
-      <h2>ลบลายมือจากข้อสอบ PDF อัตโนมัติ</h2>
-      <p>อัปโหลดข้อสอบ PDF — ปากกาสีน้ำเงิน/แดง (คำนวณ, วงกลมคำตอบ) จะถูกลบออก ส่วนตัวพิมพ์และไดอะแกรมยังอยู่ครบ</p>
+      <h2>Erase handwriting from exam PDFs automatically</h2>
+      <p>Upload a scanned exam PDF. Blue and red pen ink — calculations, answer circles, strikethroughs — is automatically removed while printed text and diagrams are preserved.</p>
     </div>
 
     <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
       <div class="icon">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       </div>
-      <p>ลากไฟล์ PDF มาวางที่นี่</p>
-      <p class="hint">หรือกดเพื่อเลือกไฟล์</p>
+      <p>Drop a PDF here</p>
+      <p class="hint">or click to choose a file</p>
       <button class="btn" onclick="event.stopPropagation(); document.getElementById('fileInput').click()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <span data-orig="btn1">เลือกไฟล์ PDF</span>
+        <span>Choose PDF file</span>
       </button>
       <input type="file" id="fileInput" accept="application/pdf,.pdf" class="hidden" onchange="onFileSelected(this.files[0])">
     </div>
@@ -250,18 +213,18 @@
     <div class="features">
       <div class="feat">
         <div class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="0"/><path d="M3 12h18M12 3v18"/></svg></div>
-        <h3>เปรียบเทียบก่อน/หลัง</h3>
-        <p>ลาก slider ดูหน้าข้อสอบต้นฉบับ vs หน้าที่ลบแล้ว</p>
+        <h3>Compare before / after</h3>
+        <p>Drag the slider to view the original page vs the cleaned page</p>
       </div>
       <div class="feat">
         <div class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
-        <h3>รักษาไดอะแกรม</h3>
-        <p>พื้นที่สีทึบ ตัวพิมพ์ กราฟ ยังอยู่ครบ</p>
+        <h3>Preserve diagrams</h3>
+        <p>Solid fills, printed text, and graphs are kept intact</p>
       </div>
       <div class="feat">
         <div class="ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
-        <h3>ดาวน์โหลด PDF</h3>
-        <p>ประกอบกลับเป็น PDF ใหม่ให้ดาวน์โหลด</p>
+        <h3>Download PDF</h3>
+        <p>Reassembles into a new PDF ready to download</p>
       </div>
     </div>
   </section>
@@ -270,16 +233,16 @@
   <section id="workspace" class="hidden">
     <div class="toolbar">
       <div class="tabs">
-        <button class="tab active" data-mode="compare" data-orig="tab1" onclick="setMode('compare')">เปรียบเทียบ</button>
-        <button class="tab" data-mode="cleaned" data-orig="tab2" onclick="setMode('cleaned')">ลบแล้ว</button>
-        <button class="tab" data-mode="original" data-orig="tab3" onclick="setMode('original')">ต้นฉบับ</button>
+        <button class="tab active" data-mode="compare" onclick="setMode('compare')">Compare</button>
+        <button class="tab" data-mode="cleaned" onclick="setMode('cleaned')">Cleaned</button>
+        <button class="tab" data-mode="original" onclick="setMode('original')">Original</button>
       </div>
       <div class="pager">
-        <button class="iconbtn" id="prevBtn" onclick="prevPage()" aria-label="หน้าก่อนหน้า">
+        <button class="iconbtn" id="prevBtn" onclick="prevPage()" aria-label="Previous page">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
-        <span class="info" id="pageInfo">หน้า 1 / 1</span>
-        <button class="iconbtn" id="nextBtn" onclick="nextPage()" aria-label="หน้าถัดไป">
+        <span class="info" id="pageInfo">Page 1 / 1</span>
+        <button class="iconbtn" id="nextBtn" onclick="nextPage()" aria-label="Next page">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
       </div>
@@ -288,10 +251,10 @@
     <div class="viewer-wrap">
       <!-- Compare slider -->
       <div class="slider-box" id="sliderBox">
-        <img id="afterImg" alt="ลบแล้ว">
-        <img id="beforeImg" alt="ต้นฉบับ" style="clip-path: inset(0 50% 0 0);">
-        <span class="label orig">ต้นฉบับ</span>
-        <span class="label clean">ลบแล้ว</span>
+        <img id="afterImg" alt="Cleaned">
+        <img id="beforeImg" alt="Original" style="clip-path: inset(0 50% 0 0);">
+        <span class="label orig">Original</span>
+        <span class="label clean">Cleaned</span>
         <div class="divider" id="divider" style="left: 50%;"></div>
         <div class="handle" id="handle" style="left: 50%;">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 7-5 5 5 5"/><path d="m15 7 5 5-5 5"/></svg>
@@ -299,10 +262,10 @@
       </div>
       <!-- Single view -->
       <div class="single-view hidden" id="singleView">
-        <img id="singleImg" alt="หน้าข้อสอบ">
-        <span class="label clean" id="singleLabel">ลบแล้ว</span>
+        <img id="singleImg" alt="Exam page">
+        <span class="label clean" id="singleLabel">Cleaned</span>
       </div>
-      <p class="viewer-hint">ลาก handle เพื่อเปรียบเทียบ · ใช้ปุ่ม ← → เปลี่ยนหน้า</p>
+      <p class="viewer-hint">Drag the handle to compare · Use ← → to change page</p>
     </div>
 
     <div class="panel">
@@ -311,17 +274,17 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           <span class="nm" id="fileName">document.pdf</span>
         </div>
-        <div class="meta" id="fileMeta">0 หน้า</div>
+        <div class="meta" id="fileMeta">0 pages</div>
         <div class="progress hidden" id="buildProgress"><div id="buildBar"></div></div>
         <p class="hidden" id="buildText" style="font-size:11px;color:var(--muted);"></p>
         <p class="err hidden" id="buildErr"></p>
         <button class="btn block" id="downloadBtn" onclick="downloadCleanedPdf()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <span id="downloadLabel">ดาวน์โหลด PDF ที่ลบลายมือแล้ว</span>
+          <span id="downloadLabel">Download cleaned PDF</span>
         </button>
       </div>
       <div class="card">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">หน้าทั้งหมด</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">All pages</div>
         <div class="thumb-list" id="thumbList"></div>
       </div>
     </div>
@@ -330,15 +293,15 @@
 
 <footer>
   <div class="ft">
-    <span>ทำงานในเบราว์เซอร์ · OpenCV.js + pdf.js + jsPDF</span>
-    <span>ไฟล์ไม่ออกจากเครื่องคุณ</span>
+    <span>Runs in your browser · OpenCV.js + pdf.js + jsPDF</span>
+    <span>Your files never leave your device</span>
   </div>
 </footer>
 
 <!-- Loading overlay -->
 <div class="overlay hidden" id="overlay">
   <div class="spin dark" style="width:28px;height:28px;"></div>
-  <div class="msg" id="overlayMsg">กำลังโหลด...</div>
+  <div class="msg" id="overlayMsg">Loading...</div>
 </div>
 
 <script>
@@ -404,54 +367,92 @@ async function getDbnetSession() {
   return dbnetSession;
 }
 
-// Run SegFormer on a canvas, return BOTH text mask and handwriting mask.
+// Run SegFormer on a canvas with TILED inference (512x512 tiles, stride=384,
+// overlap=128, cosine feather window blend) so high-resolution pages are
+// processed without downscaling. Returns BOTH a printed-text mask and a
+// handwriting mask at the original canvas resolution.
 // SegFormer output: [1, 3, H, W] logits — class 0=background, 1=text, 2=handwriting
 // Returns { textMask: CV_8U (255=printed text), hwMask: CV_8U (255=handwriting) }
 async function dbnetTextMask(srcCanvas) {
   const session = await getDbnetSession();
   if (!session) return null;
-  const SIZE = 512;
-  let h = srcCanvas.height, w = srcCanvas.width;
-  const tmp = document.createElement("canvas");
-  tmp.width = SIZE; tmp.height = SIZE;
-  tmp.getContext("2d").drawImage(srcCanvas, 0, 0, SIZE, SIZE);
-  const imgData = tmp.getContext("2d").getImageData(0, 0, SIZE, SIZE);
-  const float32 = new Float32Array(3 * SIZE * SIZE);
-  const mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225];
-  for (let i = 0; i < SIZE * SIZE; i++) {
-    float32[0 * SIZE * SIZE + i] = (imgData.data[i*4]/255 - mean[0]) / std[0];
-    float32[1 * SIZE * SIZE + i] = (imgData.data[i*4+1]/255 - mean[1]) / std[1];
-    float32[2 * SIZE * SIZE + i] = (imgData.data[i*4+2]/255 - mean[2]) / std[2];
+  const TILE = 512, OVERLAP = 128, STRIDE = TILE - OVERLAP;
+  const H = srcCanvas.height, W = srcCanvas.width;
+
+  // Pad image to fully cover tiles (white background for areas beyond source).
+  const padW = Math.ceil((W - TILE) / STRIDE) * STRIDE + TILE;
+  const padH = Math.ceil((H - TILE) / STRIDE) * STRIDE + TILE;
+  const pad = document.createElement("canvas");
+  pad.width = padW; pad.height = padH;
+  const pctx = pad.getContext("2d");
+  pctx.fillStyle = "white"; pctx.fillRect(0, 0, padW, padH);
+  pctx.drawImage(srcCanvas, 0, 0);
+
+  // Accumulation buffers (one channel per class, plus weight sum)
+  const nClasses = 3;
+  const acc = new Float32Array(nClasses * padW * padH);
+  const wsum = new Float32Array(padW * padH);
+
+  // Cosine feather window — smooths tile seams so classifications agree
+  // across overlaps instead of producing blocky artifacts.
+  const win = new Float32Array(TILE * TILE);
+  for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+    const wx = 0.5 * (1 + Math.cos(Math.PI * ((x / (TILE - 1)) * 2 - 1)));
+    const wy = 0.5 * (1 + Math.cos(Math.PI * ((y / (TILE - 1)) * 2 - 1)));
+    win[y * TILE + x] = Math.max(0.05, wx * wy);
   }
-  const tensor = new ort.Tensor("float32", float32, [1, 3, SIZE, SIZE]);
-  const feeds = {}; feeds[session.inputNames[0]] = tensor;
-  const results = await session.run(feeds);
-  const out = results[session.outputNames[0]];
-  const dims = out.dims;
-  const oh = dims[dims.length - 2], ow = dims[dims.length - 1];
-  const nClasses = dims[1];
-  // Build BOTH masks at original resolution
-  const textMask = cv.Mat.zeros(h, w, cv.CV_8U);
-  const hwMask = cv.Mat.zeros(h, w, cv.CV_8U);
-  const textArr = new Uint8Array(h * w);
-  const hwArr = new Uint8Array(h * w);
-  const sx = w / ow, sy = h / oh;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const oy = Math.min(oh - 1, Math.floor(y / sy));
-      const ox = Math.min(ow - 1, Math.floor(x / sx));
-      let maxVal = -1e9, maxClass = 0;
-      for (let c = 0; c < nClasses; c++) {
-        const v = out.data[c * oh * ow + oy * ow + ox];
-        if (v > maxVal) { maxVal = v; maxClass = c; }
+
+  // Reusable tile canvas for inference input
+  const tmp = document.createElement("canvas");
+  tmp.width = TILE; tmp.height = TILE;
+  const tctx = tmp.getContext("2d", { willReadFrequently: true });
+  const mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225];
+
+  for (let y0 = 0; y0 + TILE <= padH; y0 += STRIDE) {
+    for (let x0 = 0; x0 + TILE <= padW; x0 += STRIDE) {
+      tctx.clearRect(0, 0, TILE, TILE);
+      tctx.drawImage(pad, x0, y0, TILE, TILE, 0, 0, TILE, TILE);
+      const imgData = tctx.getImageData(0, 0, TILE, TILE);
+      const float32 = new Float32Array(3 * TILE * TILE);
+      for (let i = 0; i < TILE * TILE; i++) {
+        float32[0 * TILE * TILE + i] = (imgData.data[i * 4] / 255 - mean[0]) / std[0];
+        float32[1 * TILE * TILE + i] = (imgData.data[i * 4 + 1] / 255 - mean[1]) / std[1];
+        float32[2 * TILE * TILE + i] = (imgData.data[i * 4 + 2] / 255 - mean[2]) / std[2];
       }
-      if (maxClass === 1) textArr[y * w + x] = 255;       // text → protect
-      else if (maxClass === 2) hwArr[y * w + x] = 255;     // handwriting → erase
+      const tensor = new ort.Tensor("float32", float32, [1, 3, TILE, TILE]);
+      const feeds = {}; feeds[session.inputNames[0]] = tensor;
+      const results = await session.run(feeds);
+      const out = results[session.outputNames[0]];
+      // Accumulate weighted class logits into the padded buffer.
+      for (let y = 0; y < TILE; y++) for (let x = 0; x < TILE; x++) {
+        const w = win[y * TILE + x];
+        const dstOff = (y0 + y) * padW + (x0 + x);
+        wsum[dstOff] += w;
+        for (let c = 0; c < nClasses; c++) {
+          acc[c * padW * padH + dstOff] += out.data[c * TILE * TILE + y * TILE + x] * w;
+        }
+      }
+      // Yield to the UI thread between tiles so progress/overlays stay alive.
+      await new Promise(r => setTimeout(r, 0));
     }
   }
-  textMask.data.set(textArr);
-  hwMask.data.set(hwArr);
-  // dilate both masks
+
+  // argmax at the ORIGINAL canvas resolution (samples padded buffer at (x,y)).
+  const textMask = cv.Mat.zeros(H, W, cv.CV_8U);
+  const hwMask = cv.Mat.zeros(H, W, cv.CV_8U);
+  const tArr = new Uint8Array(H * W), hArr = new Uint8Array(H * W);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const off = y * padW + x;
+    const ws = Math.max(1e-6, wsum[off]);
+    let maxC = 0, maxV = -1e9;
+    for (let c = 0; c < nClasses; c++) {
+      const v = acc[c * padW * padH + off] / ws;
+      if (v > maxV) { maxV = v; maxC = c; }
+    }
+    if (maxC === 1) tArr[y * W + x] = 255;       // printed text → protect
+    else if (maxC === 2) hArr[y * W + x] = 255;  // handwriting → erase
+  }
+  textMask.data.set(tArr); hwMask.data.set(hArr);
   const k = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(7, 7));
   cv.dilate(textMask, textMask, k, new cv.Point(-1, -1), 1);
   cv.dilate(hwMask, hwMask, k, new cv.Point(-1, -1), 1);
@@ -502,13 +503,13 @@ dropzone.addEventListener("drop", e => {
 async function onFileSelected(file) {
   if (!file) return;
   if (!file.name.toLowerCase().endsWith(".pdf")) {
-    alert("กรุณาเลือกไฟล์ PDF");
+    alert("Please select a PDF file");
     return;
   }
   fileName = file.name;
-  showOverlay("กำลังโหลด OpenCV.js...");
+  showOverlay("Loading OpenCV.js...");
   await waitCv();
-  showOverlay("กำลังอ่าน PDF...");
+  showOverlay("Reading PDF...");
   try {
     const buf = await file.arrayBuffer();
     pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
@@ -520,7 +521,7 @@ async function onFileSelected(file) {
     // and cv.inpaint stability in WASM)
     const scale = 1.5;
     for (let i = 1; i <= pdfDoc.numPages; i++) {
-      showOverlay(`กำลังเรนเดอร์หน้า ${i}/${pdfDoc.numPages}...`);
+      showOverlay(`Rendering page ${i}/${pdfDoc.numPages}...`);
       const page = await pdfDoc.getPage(i);
       const viewport = page.getViewport({ scale });
       const canvas = document.createElement("canvas");
@@ -534,7 +535,7 @@ async function onFileSelected(file) {
     enterWorkspace();
   } catch (e) {
     hideOverlay();
-    alert("เกิดข้อผิดพลาดในการอ่าน PDF: " + e.message);
+    alert("Error reading PDF: " + e.message);
   }
 }
 
@@ -543,7 +544,7 @@ function enterWorkspace() {
   document.getElementById("workspace").classList.remove("hidden");
   document.getElementById("newBtn").classList.remove("hidden");
   document.getElementById("fileName").textContent = fileName;
-  document.getElementById("fileMeta").textContent = `${pages.length} หน้า`;
+  document.getElementById("fileMeta").textContent = `${pages.length} page${pages.length === 1 ? "" : "s"}`;
   buildThumbnails();
   goPage(0);
 }
@@ -561,7 +562,7 @@ function resetAll() {
   document.getElementById("buildProgress").classList.add("hidden");
   document.getElementById("buildText").classList.add("hidden");
   document.getElementById("buildErr").classList.add("hidden");
-  document.getElementById("downloadLabel").textContent = "ดาวน์โหลด PDF ที่ลบลายมือแล้ว";
+  document.getElementById("downloadLabel").textContent = "Download cleaned PDF";
   document.getElementById("downloadBtn").disabled = false;
   document.getElementById("fileInput").value = "";
 }
@@ -582,7 +583,7 @@ function buildThumbnails() {
     tc.getContext("2d").drawImage(pg.canvas, 0, 0, tc.width, tc.height);
     const img = document.createElement("img");
     img.src = tc.toDataURL("image/jpeg", 0.7);
-    img.alt = `หน้า ${i+1}`;
+    img.alt = `Page ${i+1}`;
     t.appendChild(img);
     const num = document.createElement("span");
     num.className = "num";
@@ -601,7 +602,7 @@ function updateActiveThumb() {
 function goPage(p) {
   if (p < 0 || p >= pages.length) return;
   currentPage = p;
-  document.getElementById("pageInfo").textContent = `หน้า ${p+1} / ${pages.length}`;
+  document.getElementById("pageInfo").textContent = `Page ${p+1} / ${pages.length}`;
   document.getElementById("prevBtn").disabled = p === 0;
   document.getElementById("nextBtn").disabled = p === pages.length - 1;
   updateActiveThumb();
@@ -636,7 +637,7 @@ async function renderCurrent() {
   } else {
     document.getElementById("singleImg").src = mode === "cleaned" ? cleanUrl : origUrl;
     const lbl = document.getElementById("singleLabel");
-    lbl.textContent = mode === "cleaned" ? "ลบแล้ว" : "ต้นฉบับ";
+    lbl.textContent = mode === "cleaned" ? "Cleaned" : "Original";
   }
 }
 
@@ -923,7 +924,7 @@ function lt(m, val) { // m < val
 }
 
 function blueMask(H, S, V) {
-  // Wider range: H 80-135, S>=15 (catches low-sat blue like กลางภาค56 S=55)
+  // Wider range: H 80-135, S>=15 (catches low-sat blue test cases)
   let m1 = ge(H, 80);
   let m2 = le(H, 135);
   let m3 = ge(S, 15);
@@ -1238,7 +1239,7 @@ async function downloadCleanedPdf() {
   const txt = document.getElementById("buildText");
   const errEl = document.getElementById("buildErr");
   btn.disabled = true;
-  label.innerHTML = '<span class="spin"></span> กำลังประมวลผล...';
+  label.innerHTML = '<span class="spin"></span> Processing...';
   prog.classList.remove("hidden");
   txt.classList.remove("hidden");
   errEl.classList.add("hidden");
@@ -1251,7 +1252,7 @@ async function downloadCleanedPdf() {
     const { jsPDF } = window.jspdf;
     let pdf = null;
     for (let i = 0; i < pages.length; i++) {
-      txt.textContent = `กำลังลบลายมือหน้า ${i+1}/${pages.length}...`;
+      txt.textContent = `Erasing page ${i+1}/${pages.length}...`;
       bar.style.width = Math.round((i / pages.length) * 100) + "%";
       const cleanUrl = await getCleanedUrl(i);
       // get original page size in points from pdf.js
@@ -1270,17 +1271,17 @@ async function downloadCleanedPdf() {
       await new Promise(r => setTimeout(r, 0));
     }
     bar.style.width = "100%";
-    txt.textContent = "เสร็จสิ้น — กำลังดาวน์โหลด...";
+    txt.textContent = "Done — downloading...";
     const outName = fileName.replace(/\.pdf$/i, "") + "_cleaned.pdf";
     pdf.save(outName);
-    label.textContent = "ดาวน์โหลดอีกครั้ง";
+    label.textContent = "Download again";
     btn.disabled = false;
     building = false;
   } catch (e) {
     console.error(e);
-    errEl.textContent = "เกิดข้อผิดพลาด: " + e.message;
+    errEl.textContent = "Error: " + e.message;
     errEl.classList.remove("hidden");
-    label.textContent = "ดาวน์โหลด PDF ที่ลบลายมือแล้ว";
+    label.textContent = "Download cleaned PDF";
     btn.disabled = false;
     building = false;
     prog.classList.add("hidden");
