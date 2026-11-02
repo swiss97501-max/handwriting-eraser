@@ -692,37 +692,20 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
   let colored = cvMatOr(colored1, green);
   colored1.delete(); green.delete();
 
-  // 1b. black-pen mask: ALL dark low-sat pixels (includes printed + handwriting).
+  // 1b. black-pen mask: only TRULY dark pixels (V<100, S<60) — printed text core
   let blackPen = blackPenMask(bgr, Vm, Sm);
 
-  // Combine colored + black-handwriting masks
+  // Combine: erase colored ink (blue/red/green) + black handwriting
+  // But DON'T protect all dark pixels — that blocks blue ink erasing
   let raw = cvMatOr(colored, blackPen);
 
   // 2. protect solid fills via distance transform
   let protectFill = protectFills(raw);
 
-  // 3. protectText: protect ALL dark low-saturation pixels as printed text.
-  //    This is simpler and MORE reliable than SegFormer — every black pixel
-  //    gets protected, so printed text is NEVER faded. Black handwriting
-  //    won't be erased by this approach, but colored handwriting (blue/red/green)
-  //    WILL be erased since it's caught by the colored mask, not blackPen.
-  //    For black handwriting, SegFormer hwMask will handle it separately.
-  let protectText = new cv.Mat();
-  {
-    let vBin = new cv.Mat(); cv.threshold(Vm, vBin, 139.5, 255, cv.THRESH_BINARY_INV);
-    let sBin = new cv.Mat(); cv.threshold(Sm, sBin, 84.5, 255, cv.THRESH_BINARY_INV);
-    cv.bitwise_and(vBin, sBin, protectText);
-    vBin.delete(); sBin.delete();
-  }
-  // Also protect navy/blue printed text (from protectNavyText)
-  let navyText = protectNavyText(Hm, Sm, Vm, blue);
-  {
-    let merged = new cv.Mat();
-    cv.bitwise_or(protectText, navyText, merged);
-    protectText.delete();
-    protectText = merged;
-  }
-  navyText.delete();
+  // 3. protectText: protect PRINTED TEXT only.
+  //    Use protectNavyText for blue printed text + SegFormer for black printed text.
+  //    Do NOT protect ALL dark pixels — blue ink edges would be protected too.
+  let protectText = protectNavyText(Hm, Sm, Vm, blue);
   blue.delete();
 
   // 3b. Merge SegFormer text mask into protectText — BUT only for BLACK pixels.
