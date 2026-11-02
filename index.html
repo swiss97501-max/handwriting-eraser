@@ -731,17 +731,28 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
     dbnetMask.delete();
   }
 
-  // 4. CRITICAL: Remove colored pixels from protectText — protectText should
-  //    NEVER protect blue/red/green handwriting. Only protect BLACK text.
-  //    This prevents blue ink from being "protected" and left as brown residue.
+  // 4. CRITICAL: Protect ALL dark low-sat pixels (printed text + anti-aliased edges)
+  //    BUT exclude colored pixels (blue/red/green ink) from protection.
+  //    This protects text edges (gray pixels V<200, S<100) without protecting ink.
   {
+    // Dark + low-sat = printed text (including anti-aliased edges)
+    let darkLowSat = new cv.Mat();
+    let vBin = new cv.Mat(); cv.threshold(Vm, vBin, 199.5, 255, cv.THRESH_BINARY_INV);
+    let sBin = new cv.Mat(); cv.threshold(Sm, sBin, 99.5, 255, cv.THRESH_BINARY_INV);
+    cv.bitwise_and(vBin, sBin, darkLowSat);
+    vBin.delete(); sBin.delete();
+    // Remove colored pixels from protection
     let notColored = new cv.Mat();
     cv.bitwise_not(colored, notColored);
-    let protectedClean = new cv.Mat();
-    cv.bitwise_and(protectText, notColored, protectedClean);
+    let textProtect = new cv.Mat();
+    cv.bitwise_and(darkLowSat, notColored, textProtect);
+    darkLowSat.delete(); notColored.delete();
+    // Merge into protectText
+    let merged = new cv.Mat();
+    cv.bitwise_or(protectText, textProtect, merged);
     protectText.delete();
-    protectText = protectedClean;
-    notColored.delete();
+    protectText = merged;
+    textProtect.delete();
   }
 
   Hm.delete(); Sm.delete(); Vm.delete();
