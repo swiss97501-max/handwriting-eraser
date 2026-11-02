@@ -771,11 +771,10 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
   eraseColored.delete();
   // re-subtract dilated protectText (and protectRed if set) so dilation bleed
   // doesn't touch printed text elements
-  // Use LARGER dilation for protectText (9x9, 4 iters) to fully cover printed
-  // text glyphs — prevents printed text from being faded/erased
+  // Use moderate dilation (7x7, 2 iters) — too large protects handwriting too
   let protTextDil = new cv.Mat();
-  let protK = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(9, 9));
-  cv.dilate(protectText, protTextDil, protK, new cv.Point(-1,-1), 4);
+  let protK = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(7, 7));
+  cv.dilate(protectText, protTextDil, protK, new cv.Point(-1,-1), 2);
   protK.delete();
   let protCombined = protTextDil;
   if (protectRed) {
