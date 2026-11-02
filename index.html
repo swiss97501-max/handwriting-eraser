@@ -775,12 +775,11 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
   // keep protectText (and protectRed if set) — re-subtract after dilation to
   // prevent erase bleed into protected text areas.
 
-  // dilate colored mask moderately (3x3x3) — too large eats into printed text
+  // dilate colored mask moderately (3x3x3) — no GaussianBlur (it fades text)
   let k3 = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3,3));
   let eraseColored = new cv.Mat();
   cv.bitwise_and(erase, colored, eraseColored);
   cv.dilate(eraseColored, eraseColored, k3, new cv.Point(-1,-1), 3);
-  cv.GaussianBlur(eraseColored, eraseColored, new cv.Size(0,0), 1.0);
   let eraseColoredBin = new cv.Mat();
   cv.threshold(eraseColored, eraseColoredBin, 128, 255, cv.THRESH_BINARY);
   eraseColored.delete();
