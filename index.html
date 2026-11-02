@@ -693,20 +693,36 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
   colored1.delete(); green.delete();
 
   // 1b. black-pen mask: ALL dark low-sat pixels (includes printed + handwriting).
-  //     The DBNet protectText (merged later) will subtract printed text from erase,
-  //     so only black handwriting remains to be erased.
   let blackPen = blackPenMask(bgr, Vm, Sm);
 
   // Combine colored + black-handwriting masks
   let raw = cvMatOr(colored, blackPen);
-  // keep colored and blackPen for later use (separate erase paths)
-  // raw is used below for protectFills and erase
 
   // 2. protect solid fills via distance transform
   let protectFill = protectFills(raw);
 
-  // 3. protect navy headers (dense high-sat horizontal text) — needs blue + Hm,Sm,Vm
-  let protectText = protectNavyText(Hm, Sm, Vm, blue);
+  // 3. protectText: protect ALL dark low-saturation pixels as printed text.
+  //    This is simpler and MORE reliable than SegFormer — every black pixel
+  //    gets protected, so printed text is NEVER faded. Black handwriting
+  //    won't be erased by this approach, but colored handwriting (blue/red/green)
+  //    WILL be erased since it's caught by the colored mask, not blackPen.
+  //    For black handwriting, SegFormer hwMask will handle it separately.
+  let protectText = new cv.Mat();
+  {
+    let vBin = new cv.Mat(); cv.threshold(Vm, vBin, 139.5, 255, cv.THRESH_BINARY_INV);
+    let sBin = new cv.Mat(); cv.threshold(Sm, sBin, 84.5, 255, cv.THRESH_BINARY_INV);
+    cv.bitwise_and(vBin, sBin, protectText);
+    vBin.delete(); sBin.delete();
+  }
+  // Also protect navy/blue printed text (from protectNavyText)
+  let navyText = protectNavyText(Hm, Sm, Vm, blue);
+  {
+    let merged = new cv.Mat();
+    cv.bitwise_or(protectText, navyText, merged);
+    protectText.delete();
+    protectText = merged;
+  }
+  navyText.delete();
   blue.delete();
 
   // 3b. Merge SegFormer text mask into protectText — BUT only for BLACK pixels.
