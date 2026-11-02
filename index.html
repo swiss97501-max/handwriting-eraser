@@ -759,12 +759,11 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
   // keep protectText (and protectRed if set) — re-subtract after dilation to
   // prevent erase bleed into protected text areas.
 
-  // dilate (larger to cover anti-aliased edges of colored pen), blur, threshold
-  let k3 = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(5,5));
+  // dilate colored mask moderately (3x3x3) — too large eats into printed text
+  let k3 = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(3,3));
   let eraseColored = new cv.Mat();
   cv.bitwise_and(erase, colored, eraseColored);
-  // Dilate colored mask MORE to cover brown anti-aliased edges of ink
-  cv.dilate(eraseColored, eraseColored, k3, new cv.Point(-1,-1), 5);
+  cv.dilate(eraseColored, eraseColored, k3, new cv.Point(-1,-1), 3);
   cv.GaussianBlur(eraseColored, eraseColored, new cv.Size(0,0), 1.0);
   let eraseColoredBin = new cv.Mat();
   cv.threshold(eraseColored, eraseColoredBin, 128, 255, cv.THRESH_BINARY);
@@ -774,7 +773,7 @@ function cleanCanvasSync(srcCanvas, dbnetMask) {
   // Use moderate dilation (7x7, 2 iters) — too large protects handwriting too
   let protTextDil = new cv.Mat();
   let protK = cv.getStructuringElement(cv.MORPH_ELLIPSE, new cv.Size(7, 7));
-  cv.dilate(protectText, protTextDil, protK, new cv.Point(-1,-1), 2);
+  cv.dilate(protectText, protTextDil, protK, new cv.Point(-1,-1), 3);
   protK.delete();
   let protCombined = protTextDil;
   if (protectRed) {
